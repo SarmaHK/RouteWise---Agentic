@@ -1,0 +1,277 @@
+/* ============================================================
+   RouteWise Agentic — DESIGN TOKENS (source of truth)
+   ------------------------------------------------------------
+   This file IMPLEMENTS the rules explained in docs/DESIGN_SYSTEM.md.
+   The Markdown doc and this file MUST stay in sync (same commit).
+
+   RULES:
+   - Every visual value in the product comes from here.
+   - Components use var(--token). NO magic hex/px/rem in components.
+   - Missing a token? Add it to DESIGN_SYSTEM.md AND here first.
+   - Dark-first theme. A future light theme = override these values only.
+
+   NOTE: CSS custom properties cannot be used inside @media queries.
+   Breakpoints are documented as px here for reference; media queries
+   must use the literal px values (see docs/DESIGN_SYSTEM.md §6).
+   ============================================================ */
+
+:root {
+  /* ---------- 1. COLOR: BRAND ---------- */
+  --color-primary: #12A594;
+  --color-primary-hover: #0E8B7D;
+  --color-primary-active: #0B7165;
+  --color-primary-subtle: rgba(18, 165, 148, 0.12);
+  --color-on-primary: #04211D;
+
+  --color-secondary: #E9B44C;
+  --color-secondary-hover: #D89F35;
+  --color-secondary-subtle: rgba(233, 180, 76, 0.14);
+  --color-on-secondary: #2A1E02;
+
+  /* ---------- 1. COLOR: NEUTRALS (surfaces & structure) ---------- */
+  --color-bg: #0A0F1C;
+  --color-bg-alt: #0D1424;
+  --color-surface: #121A2B;
+  --color-surface-elevated: #1A2438;
+  --color-surface-sunken: #0C1322;
+  --color-border: #26314A;
+  --color-border-strong: #35425F;
+
+  /* ---------- 1. COLOR: TEXT ---------- */
+  --color-text-primary: #EAF0FA;
+  --color-text-secondary: #AAB6CE;
+  --color-text-muted: #6F7C97;
+  --color-text-inverse: #0A0F1C;
+
+  /* ---------- 1. COLOR: SEMANTIC (status) ---------- */
+  --color-success: #34C97E;
+  --color-success-subtle: rgba(52, 201, 126, 0.14);
+  --color-warning: #E08A2E;
+  --color-warning-subtle: rgba(224, 138, 46, 0.14);
+  --color-error: #F05252;
+  --color-error-subtle: rgba(240, 82, 82, 0.14);
+  --color-error-strong: #D64545;   /* solid destructive fills */
+  --color-on-error: #FFFFFF;       /* text/icon on solid error-strong fill */
+  --color-info: #4C9AFF;
+  --color-info-subtle: rgba(76, 154, 255, 0.14);
+
+  /* ---------- 1. COLOR: FOCUS ---------- */
+  --color-focus-ring: rgba(18, 165, 148, 0.55);
+
+  /* ---------- 2. TYPOGRAPHY: FAMILIES ---------- */
+  /* Web fonts are NOT loaded in the foundation phase; stack falls back to
+     system fonts so nothing breaks. Do not add a font dependency yet. */
+  --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', 'IBM Plex Mono', ui-monospace, SFMono-Regular,
+    Menlo, Consolas, 'Liberation Mono', monospace;
+
+  /* ---------- 2. TYPOGRAPHY: SCALE (base 16px = 1rem) ---------- */
+  --text-display: 2.5rem;    /* 40px */
+  --text-h1: 2rem;           /* 32px */
+  --text-h2: 1.5rem;         /* 24px */
+  --text-h3: 1.25rem;        /* 20px */
+  --text-h4: 1.125rem;       /* 18px */
+  --text-body-lg: 1.0625rem; /* 17px */
+  --text-body: 1rem;         /* 16px */
+  --text-body-sm: 0.875rem;  /* 14px */
+  --text-label: 0.75rem;     /* 12px */
+  --text-mono: 0.875rem;     /* 14px */
+
+  /* ---------- 2. TYPOGRAPHY: WEIGHTS ---------- */
+  --font-regular: 400;
+  --font-medium: 500;
+  --font-semibold: 600;
+  --font-bold: 700;
+
+  /* ---------- 2. TYPOGRAPHY: LINE HEIGHTS ---------- */
+  --leading-none: 1;
+  --leading-tight: 1.15;
+  --leading-snug: 1.35;
+  --leading-normal: 1.6;
+  --leading-relaxed: 1.75;
+
+  /* ---------- 2. TYPOGRAPHY: LETTER SPACING ---------- */
+  --tracking-tight: -0.02em;
+  --tracking-normal: 0;
+  --tracking-wide: 0.04em;
+
+  /* ---------- 3. SPACING (4px base grid) ---------- */
+  --space-0: 0;
+  --space-1: 0.25rem;  /* 4px */
+  --space-2: 0.5rem;   /* 8px */
+  --space-3: 0.75rem;  /* 12px */
+  --space-4: 1rem;     /* 16px */
+  --space-5: 1.25rem;  /* 20px */
+  --space-6: 1.5rem;   /* 24px */
+  --space-7: 1.75rem;  /* 28px */
+  --space-8: 2rem;     /* 32px */
+  --space-10: 2.5rem;  /* 40px */
+  --space-12: 3rem;    /* 48px */
+  --space-16: 4rem;    /* 64px */
+  --space-20: 5rem;    /* 80px */
+  --space-24: 6rem;    /* 96px */
+
+  /* ---------- 4. BORDER RADIUS ---------- */
+  --radius-none: 0;
+  --radius-xs: 0.125rem;  /* 2px */
+  --radius-sm: 0.25rem;   /* 4px */
+  --radius-md: 0.5rem;    /* 8px */
+  --radius-lg: 0.75rem;   /* 12px */
+  --radius-xl: 1rem;      /* 16px */
+  --radius-2xl: 1.5rem;   /* 24px */
+  --radius-full: 9999px;
+
+  /* ---------- 5. SHADOWS (dark theme: deep + soft) ---------- */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.30);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.40), 0 1px 2px rgba(0, 0, 0, 0.30);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.50);
+  --shadow-xl: 0 24px 56px rgba(0, 0, 0, 0.55);
+  --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  /* Use SPARINGLY — live/active agent emphasis only. */
+  --shadow-glow-primary: 0 0 0 1px rgba(18, 165, 148, 0.40),
+    0 0 20px rgba(18, 165, 148, 0.15);
+
+  /* ---------- 6. BREAKPOINTS (reference only — use px in @media) ----------
+     sm: 640px | md: 768px | lg: 1024px | xl: 1280px | 2xl: 1536px  */
+  --bp-sm: 640px;
+  --bp-md: 768px;
+  --bp-lg: 1024px;
+  --bp-xl: 1280px;
+  --bp-2xl: 1536px;
+
+  /* ---------- 7. MOTION: DURATIONS ---------- */
+  --duration-instant: 80ms;
+  --duration-fast: 150ms;
+  --duration-base: 220ms;
+  --duration-slow: 320ms;
+  --duration-slower: 480ms;
+
+  /* ---------- 7. MOTION: EASING ---------- */
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1); /* subtle emphasis, rare */
+
+  /* ---------- 8. Z-INDEX SCALE ---------- */
+  --z-base: 0;
+  --z-dropdown: 1000;
+  --z-sticky: 1100;
+  --z-overlay: 1200;
+  --z-modal: 1300;
+  --z-popover: 1400;
+  --z-toast: 1500;
+  --z-tooltip: 1600;
+
+  /* ---------- 9. LAYOUT ---------- */
+  --container-max: 1280px;
+  --container-padding: clamp(1rem, 4vw, 2rem);
+  --header-height: 64px;
+  --sidebar-width: 360px;
+  --content-max-width: 72ch;
+
+  /* ---------- 10. BORDERS ---------- */
+  --border-width: 1px;
+  --border-width-thick: 2px;
+  --border-color: var(--color-border);
+
+  /* ============================================================
+     11. COMPONENT TOKENS
+     ============================================================ */
+
+  /* ---------- 11.1 BUTTONS ---------- */
+  --btn-height-sm: 32px;
+  --btn-height-md: 40px;
+  --btn-height-lg: 48px;
+  --btn-padding-x-sm: var(--space-3);
+  --btn-padding-x-md: var(--space-4);
+  --btn-padding-x-lg: var(--space-5);
+  --btn-radius: var(--radius-md);
+  --btn-font-sm: var(--text-body-sm);
+  --btn-font-md: var(--text-body-sm);
+  --btn-font-lg: var(--text-body);
+  --btn-font-weight: var(--font-semibold);
+  --btn-transition: background-color var(--duration-fast) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard),
+    box-shadow var(--duration-fast) var(--ease-standard);
+  --btn-disabled-opacity: 0.5;
+  --btn-focus-ring: 0 0 0 2px var(--color-bg), 0 0 0 4px var(--color-focus-ring);
+
+  /* ---------- 11.2 INPUTS / SELECT ---------- */
+  --input-height-sm: 32px;
+  --input-height-md: 40px;
+  --input-height-lg: 48px;
+  --input-radius: var(--radius-md);
+  --input-bg: var(--color-surface-sunken);
+  --input-border: var(--border-width) solid var(--color-border);
+  --input-border-focus: var(--border-width) solid var(--color-primary);
+  --input-border-error: var(--border-width) solid var(--color-error);
+  --input-padding-y: var(--space-2);
+  --input-padding-x: var(--space-3);
+  --input-text: var(--color-text-primary);
+  --input-placeholder: var(--color-text-muted);
+
+  /* ---------- 11.3 CARDS ---------- */
+  --card-bg: var(--color-surface);
+  --card-border: var(--border-width) solid var(--color-border);
+  --card-radius: var(--radius-lg);
+  --card-padding: var(--space-6);
+  --card-padding-compact: var(--space-5);
+  --card-shadow: var(--shadow-sm);
+  --card-shadow-hover: var(--shadow-md);
+
+  /* ---------- 11.4 BADGES / PILLS ---------- */
+  --badge-radius: var(--radius-sm);
+  --badge-radius-pill: var(--radius-full);
+  --badge-padding-y: var(--space-1);
+  --badge-padding-x: var(--space-2);
+  --badge-font: var(--text-label);
+
+  /* ---------- 11.5 STATUS INDICATOR + AGENT-STATE COLORS ---------- */
+  --status-dot-size: var(--space-2);   /* 8px */
+  --status-node-size: 12px;            /* agent timeline node */
+
+  /* Canonical Agent state → color (states: docs/UX_FLOW.md).
+     Do NOT invent new states. */
+  --state-idle: var(--color-text-muted);
+  --state-understanding: var(--color-info);
+  --state-planning: var(--color-info);
+  --state-searching: var(--color-primary);
+  --state-evaluating: var(--color-secondary);
+  --state-executing: var(--color-primary);
+  --state-replanning: var(--color-warning);
+  --state-completed: var(--color-success);
+  --state-error: var(--color-error);
+
+  /* ---------- 11.6 ROUTE CARDS ---------- */
+  --route-accent-width: 3px;
+  --route-accent-recommended: var(--color-primary);
+  --route-accent-alternative: var(--color-border-strong);
+
+  /* ---------- 11.7 AGENT ACTIVITY (timeline) ---------- */
+  --timeline-line-width: 2px;
+  --timeline-line-color: var(--color-border);
+  --timeline-trace-bg: var(--color-surface-sunken);
+  --timeline-trace-text: var(--color-text-secondary);
+
+  /* ---------- 11.8 MAPS ---------- */
+  --map-radius: var(--radius-lg);
+  --map-border: var(--border-width) solid var(--color-border);
+  --map-min-height-mobile: 240px;
+  --map-min-height-desktop: 400px;
+  --map-route-line-width: 3px;
+  --map-route-primary: var(--color-primary);
+  --map-route-alternative: var(--color-border-strong);
+  --map-marker-endpoint: var(--color-secondary);
+  --map-marker-intermediate: var(--color-primary);
+
+  /* ---------- 11.9 TRAVEL PASS (visual contract; impl = Workstream C) ---------- */
+  --pass-bg: var(--color-surface-elevated);
+  --pass-radius: var(--radius-2xl);
+  --pass-shadow: var(--shadow-lg);
+  --pass-divider: var(--border-width) dashed var(--color-border-strong);
+  --pass-qr-bg: var(--color-surface-sunken);
+  --pass-qr-radius: var(--radius-md);
+}

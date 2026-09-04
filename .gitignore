@@ -1,0 +1,107 @@
+# ============================================================
+# RouteWise Agentic — .gitignore
+# Multi-stack repo: React (frontend) + FastAPI/Python (backend)
+# + ML (models) + automation. Keep secrets and build noise out.
+# ============================================================
+
+# ---------- Secrets & environment ----------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets.json
+credentials.json
+# Alibaba Cloud / API keys
+.dashscope_api_key
+DASHSCOPE_API_KEY
+
+# ---------- Python (backend, models, automation) ----------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.venv/
+venv/
+env/
+ENV/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.tox/
+
+# ---------- Node / React (frontend) ----------
+node_modules/
+frontend/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+frontend/build/
+frontend/dist/
+frontend/.vite/
+.cache/
+.parcel-cache/
+.next/
+.nuxt/
+
+# ---------- ML artifacts (Workstream B — keep large binaries out) ----------
+models/**/*.pkl
+models/**/*.joblib
+models/**/*.h5
+models/**/*.pt
+models/**/*.pth
+models/**/*.onnx
+models/**/*.bin
+*.sqlite
+*.sqlite3
+*.db
+
+# ---------- Data (keep bulky/raw transit data out; commit small mocks explicitly) ----------
+data/raw/
+data/gtfs/
+data/**/*.zip
+# NOTE: small curated mock fixtures under data/mock/ may be committed on purpose.
+
+# ---------- Logs ----------
+*.log
+logs/
+
+# ---------- OS ----------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+desktop.ini
+
+# ---------- IDE / editors ----------
+.idea/
+*.swp
+*.swo
+*~
+# (Qoder / VS Code workspace settings may be shared deliberately; ignore user-local)
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
