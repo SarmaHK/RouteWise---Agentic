@@ -17,7 +17,7 @@ class HealthResponse(BaseModel):
 
     status: str = Field(default="ok", description="Liveness flag; 'ok' when healthy.")
     service: str = Field(default="routewise-agentic-backend")
-    phase: str = Field(default="A2-understanding")
+    phase: str = Field(default="A3-decision")
 
 
 class ErrorDetail(BaseModel):

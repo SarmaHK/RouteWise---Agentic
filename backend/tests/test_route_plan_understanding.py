@@ -1,8 +1,9 @@
-"""POST /api/route/plan A2 behaviour — request UNDERSTANDING only (A2 brief §7, §9).
+"""POST /api/route/plan request-UNDERSTANDING behaviour (A2), updated for A3.
 
-Verifies the endpoint extracts a TravelRequest, returns status UNDERSTANDING, plans no route,
-surfaces clarification honestly, keeps the mock data source clear, and follows the error
-contract. Runs offline (no MODEL_STUDIO_API_KEY => deterministic mock extractor).
+A2 verified the endpoint extracts a TravelRequest and plans no route. In A3 the same endpoint now
+also runs the agent and decides a route, so the happy-path assertions below reflect a COMPLETED
+decision; the extraction, clarification, and error-contract guarantees are unchanged. Runs
+offline (no MODEL_STUDIO_API_KEY => deterministic mock extractor + mock candidates).
 """
 
 from __future__ import annotations
@@ -20,11 +21,13 @@ def test_plan_understands_natural_language(client: TestClient) -> None:
     assert response.status_code == 200
     body = response.json()
 
-    assert body["status"] == "UNDERSTANDING"
-    # A2 plans NO route.
-    assert body["recommendation"] is None
-    assert body["legs"] == []
-    assert body["alternatives"] == []
+    # A3 decides a route: the golden request completes with an explicitly-mock recommendation.
+    assert body["status"] == "COMPLETED"
+    assert body["recommendation"] is not None
+    assert body["recommendation"]["id"] == "R1"
+    assert body["recommendation"]["data_source"] == "mock"
+    assert body["legs"] == []  # leg detail is a future Workstream B tool
+    assert body["alternatives"]  # alternatives are returned
 
     req = body["request"]
     assert req["origin"] == "Colombo Fort"
@@ -39,14 +42,16 @@ def test_plan_understands_natural_language(client: TestClient) -> None:
     assert req["raw_text"] == GOLDEN
 
 
-def test_plan_agent_action_is_understanding_and_mock(client: TestClient) -> None:
+def test_plan_records_understanding_action_as_mock(client: TestClient) -> None:
     response = client.post("/api/route/plan", json={"raw_text": GOLDEN})
     body = response.json()
-    assert len(body["agent_actions"]) == 1
-    action = body["agent_actions"][0]
-    assert action["state"] == "UNDERSTANDING"
-    assert action["data_source"] == "mock"
-    assert action["label"]
+    actions = body["agent_actions"]
+    # A3 records a full trace; the first action is still the (mock) understanding step.
+    assert len(actions) >= 1
+    first = actions[0]
+    assert first["state"] == "UNDERSTANDING"
+    assert first["data_source"] == "mock"
+    assert first["label"]
 
 
 def test_plan_flags_clarification_when_origin_missing(client: TestClient) -> None:

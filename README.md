@@ -4,7 +4,7 @@
 
 - **Competition:** AI Buildathon 2026
 - **Track:** Hospitality & Tourism
-- **Current phase:** A1 — Project Foundation ✅ (docs consolidated into an 8-doc system; **working foundation scaffold implemented** — FastAPI backend + React shell + AI-service abstraction)
+- **Current phase:** A3 — Agent Orchestration & Decision Engine ✅ (A1 foundation + A2 travel-request understanding + A3 agent state machine, tool abstraction, deterministic **mock** candidate provider, and a transparent decision engine wired into `POST /api/route/plan`; all route data is mock)
 - **Build sequencing:** Workstream A first; B & C documented now, built later to the same interfaces
 
 > 🤖 **AI agents: read [`AI_CONTEXT.md`](AI_CONTEXT.md) before doing anything.**
@@ -110,9 +110,9 @@ where a boundary is needed now). Mantra: **A decides, B informs, C acts.**
 
 | Phase | Name | Status |
 |-------|------|--------|
-| **A1** | **Project Foundation** | ✅ **Current** |
-| A2 | Travel Request Understanding | ⏳ Not started |
-| A3 | Agent Architecture | ⏳ |
+| A1 | Project Foundation | ✅ Complete |
+| A2 | Travel Request Understanding | ✅ Complete |
+| **A3** | **Agent Architecture** | ✅ **Current** |
 | A4 | Agent Tool System | ⏳ |
 | A5 | Tool-Calling Orchestrator | ⏳ |
 | A6 | Route Decision Engine | ⏳ |
@@ -162,7 +162,7 @@ RouteWise - Agentic/
 
 ---
 
-## Local development (A1 foundation)
+## Local development
 
 Prerequisites: a recent **Python 3.x** and **Node.js 18+** (this foundation was built and
 verified on **Python 3.13** and **Node 25**).
@@ -184,13 +184,16 @@ npm install
 npm run dev                       # http://localhost:5173 (Vite; CORS-enabled against :8000)
 ```
 
-Open http://localhost:5173 — the foundation shell checks backend health and can exercise
-`POST /api/route/plan` (which returns an honest A1 **foundation stub**, not a real plan).
+Open http://localhost:5173 — the app shell checks backend health and exercises
+`POST /api/route/plan`: the agent understands the request, shows its progress through the
+canonical states, and returns a **mock** recommendation with concise decision reasons and
+alternatives (or a clarification when a hard constraint is missing).
 
 **Verify:**
 
-- `pytest` from `backend/` — health, config, route-plan foundation, and the AI-service mock; the
-  live Qwen connectivity test is **skipped** unless `MODEL_STUDIO_API_KEY` is set.
+- `pytest` from `backend/` — health, config, extraction, the agent state machine, decision engine,
+  orchestrator, and the route-plan API; the live Qwen connectivity tests are **skipped** unless
+  `MODEL_STUDIO_API_KEY` is set.
 - `npm run build` from `frontend/` — type-checks (`tsc --noEmit`) then builds the production bundle.
 
 > Configuration is via environment variables only. **Never commit `.env` or any API key**
@@ -200,17 +203,23 @@ Open http://localhost:5173 — the foundation shell checks backend health and ca
 
 ## Status
 
-**A1 — Project Foundation is complete.** The documentation is **consolidated into an 8-doc
-system** covering all three workstreams (PROJECT, ARCHITECTURE, DESIGN_SYSTEM, API_CONTRACTS,
-AGENT_SPEC, WORKSTREAMS, DEVELOPMENT_RULES, DEMO), the machine-readable design tokens live in
-`frontend/src/styles/tokens.css`, **and a working foundation scaffold is in place**: a FastAPI
-backend (config, logging, CORS, `GET /health`, a contract-shaped `POST /api/route/plan`
-foundation stub, structured errors), an isolated **AI service abstraction** for Qwen/Model Studio
-with a mock fallback, and a **React + Vite + TypeScript** frontend (app shell + a centralized
-`services/api` client). Backend tests pass and frontend ↔ backend communication is verified
-end to end.
+**A1 — Project Foundation, A2 — Travel Request Understanding, and A3 — Agent Orchestration &
+Decision Engine are complete.** The documentation is **consolidated into an 8-doc system**
+covering all three workstreams (PROJECT, ARCHITECTURE, DESIGN_SYSTEM, API_CONTRACTS, AGENT_SPEC,
+WORKSTREAMS, DEVELOPMENT_RULES, DEMO), and the machine-readable design tokens live in
+`frontend/src/styles/tokens.css`.
 
-**No application features are implemented yet** (by design): no agent logic, travel-request
-understanding, tool calling, route scoring, ML, database, or automation — those are later phases
-(A2+) and Workstreams B/C. **Qwen connectivity is not claimed** (with no API key configured the
-backend uses the mock AI client).
+The backend (FastAPI) now runs a real agent layer: `POST /api/route/plan` extracts a validated
+`TravelRequest` (A2 — via Qwen when a key is set, else a deterministic mock), then the agent (A3)
+drives the canonical state machine `UNDERSTANDING → PLANNING → SEARCHING → EVALUATING → COMPLETED`,
+calls a **mock** route-search tool, and a **transparent deterministic decision engine** filters hard
+constraints (destination, budget, arrival deadline), ranks soft preferences (walking, luggage,
+departure), and returns a recommendation with concise reasons plus honest alternatives — or stops
+early for clarification. The React + TypeScript shell shows the parsed request, the agent-progress
+timeline, the mock recommendation, its decision reasons, and alternatives. Backend tests pass and
+the frontend build is verified.
+
+**All route data is MOCK** (Phase A3): no live transit search, ML fare/delay prediction, GTFS,
+database, seat availability, booking, disruption monitoring, or Travel Pass — those are later
+phases (A4+) and Workstreams B/C. **Qwen is not used for route selection** (the decision is
+deterministic); with no API key the backend uses the mock extractor and mock AI client.

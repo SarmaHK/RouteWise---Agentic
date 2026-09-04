@@ -2,8 +2,9 @@
 
 Wires together: configuration, logging, CORS for local frontend dev, the health probe, the
 ``/api`` router (``POST /api/route/plan``), and structured error handling matching
-the envelope in docs/API_CONTRACTS.md §5. In A2 the plan endpoint performs natural-language
-request UNDERSTANDING (extraction) only — no agent orchestration / tool / decision logic yet.
+the envelope in docs/API_CONTRACTS.md §5. In A3 the plan endpoint runs the full agent pipeline:
+A2 request understanding → clarification gate → agent orchestration (canonical state machine +
+mock tools) → deterministic decision → ``PlanResponse``. Real transit data / execution arrive later.
 
 Run locally from the ``backend/`` directory::
 
@@ -36,7 +37,7 @@ async def lifespan(app: FastAPI):
     """Configure logging on startup; log a NON-secret view only (never the API key)."""
     settings = get_settings()
     configure_logging(settings.log_level)
-    logger.info("RouteWise backend starting (phase A2): %s", settings.public_view())
+    logger.info("RouteWise backend starting (phase A3): %s", settings.public_view())
     yield
     logger.info("RouteWise backend shutting down.")
 
@@ -49,8 +50,9 @@ def create_app() -> FastAPI:
         version=__version__,
         description=(
             "Autonomous Multi-Modal Travel & Transit Coordinator for Tourism in Sri Lanka. "
-            "Phase A2: health probe + POST /api/route/plan natural-language request "
-            "understanding (extraction only). Route planning/decision logic arrives in A3-A9."
+            "Phase A3: health probe + POST /api/route/plan agent orchestration and a "
+            "deterministic route decision over mock candidates. Real transit data, execution, "
+            "and live monitoring arrive in A4-A9."
         ),
         lifespan=lifespan,
     )
@@ -72,7 +74,7 @@ def create_app() -> FastAPI:
     def root() -> dict[str, str]:
         return {
             "service": "routewise-agentic-backend",
-            "phase": "A2-understanding",
+            "phase": "A3-decision",
             "health": "/health",
             "docs": "/docs",
         }

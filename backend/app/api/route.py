@@ -1,28 +1,24 @@
-"""Route-planning endpoint (Workstream A, Phase A2 — Request Understanding).
+"""Route-planning endpoint (Workstream A, Phase A3 — Agent Orchestration & Decision).
 
-``POST /api/route/plan`` is the reserved primary endpoint (docs/API_CONTRACTS.md §2). In A2 it
-UNDERSTANDS the request only: it runs natural-language extraction into a validated
-``TravelRequest`` and returns status ``UNDERSTANDING``. It deliberately does NOT plan a route,
-call tools, or score alternatives — those arrive in A3+ (A2 brief §7).
+``POST /api/route/plan`` is the reserved primary endpoint (docs/API_CONTRACTS.md §2). The A3
+pipeline is: A2 extraction → clarification gate → agent orchestration → candidate evaluation →
+decision → ``PlanResponse`` (A3 brief §12). The **request contract is unchanged from A2**; the
+response now carries a decision (status ``COMPLETED``, a recommendation, alternatives, and the
+full agent-action trace) whenever the request can be planned.
 
-Extraction uses the existing AI abstraction: real Qwen when ``MODEL_STUDIO_API_KEY`` is set,
-otherwise a deterministic mock clearly labelled ``extraction_source="mock"`` (A2 brief §5).
-Malformed model output is rejected safely as a 502, never silently accepted.
+Honesty (A3 brief §7/§17; AGENT_SPEC §15–§16): route figures come from a deterministic MOCK
+candidate provider and every result is labelled ``data_source="mock"``. Extraction still uses real
+Qwen when ``MODEL_STUDIO_API_KEY`` is set, else the deterministic mock extractor (A2). If the
+request needs clarification, the agent **stops before deciding** and returns status
+``UNDERSTANDING`` (A2 behaviour preserved). Malformed model output is rejected safely as a 502.
 """
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.schemas.route import (
-    AgentAction,
-    AgentState,
-    DataSource,
-    PlanRequest,
-    PlanResponse,
-)
+from app.agent.orchestrator import RouteAgent, get_agent
+from app.schemas.route import PlanRequest, PlanResponse
 from app.services.ai.extraction import (
     MalformedExtractionError,
     TravelRequestExtractor,
@@ -35,17 +31,18 @@ router = APIRouter(tags=["route"])
 @router.post(
     "/plan",
     response_model=PlanResponse,
-    summary="Understand a travel request (A2 — no route planning yet)",
+    summary="Plan a route with the A3 agent (mock candidates, deterministic decision)",
 )
 def plan_route(
     request: PlanRequest,
     extractor: TravelRequestExtractor = Depends(get_extractor),
+    agent: RouteAgent = Depends(get_agent),
 ) -> PlanResponse:
-    """Extract a validated ``TravelRequest`` from the request. No route is planned in A2.
+    """Understand the request (A2), then let the agent decide a route (A3).
 
-    The natural-language ``raw_text`` (plus any explicit structured fields as hints) is
-    understood into a ``TravelRequest``. Missing hard constraints are surfaced honestly via
-    the TravelRequest clarification fields rather than fabricated (A2 brief §6).
+    Missing hard constraints are surfaced honestly through the TravelRequest clarification fields,
+    and the agent stops before deciding rather than fabricating a route (A3 brief §6/§12). All
+    route data is mock and labelled as such; no live transit/booking data is claimed.
     """
     hints = request.model_dump(exclude={"raw_text"}, exclude_none=True)
     raw_text = request.raw_text or ""
@@ -59,50 +56,14 @@ def plan_route(
             detail="Travel-request extraction failed: the model returned invalid output.",
         ) from exc
 
-    is_mock = travel_request.extraction_source is not None and (
-        travel_request.extraction_source.value == "mock"
-    )
-    if travel_request.clarification_required:
-        detail = (
-            "Understood the request but a required detail is missing: "
-            + ", ".join(travel_request.missing_fields)
-            + ". No route planned (A2 is understanding only)."
-        )
-    else:
-        understood = [
-            f"{k}={v}"
-            for k, v in travel_request.model_dump(
-                include={
-                    "origin",
-                    "destination",
-                    "budget",
-                    "currency",
-                    "luggage",
-                    "walking_preference",
-                },
-                exclude_none=True,
-            ).items()
-        ]
-        detail = (
-            "Understood the travel request: "
-            + (", ".join(understood) if understood else "(no explicit constraints)")
-            + ". Route planning, tool calling, and scoring arrive in later phases (A3+)."
-        )
-
-    action = AgentAction(
-        seq=1,
-        state=AgentState.UNDERSTANDING,
-        label="Understood travel request",
-        detail=detail,
-        status="done",
-        timestamp=datetime.now(timezone.utc),
-        data_source=DataSource.mock if is_mock else DataSource.live,
-    )
+    # The agent owns the state machine, tool calls, decision, and action trace (A3 brief §12).
+    context = agent.run(travel_request)
     return PlanResponse(
-        status=AgentState.UNDERSTANDING,
-        request=travel_request,
-        recommendation=None,
-        legs=[],
-        alternatives=[],
-        agent_actions=[action],
+        status=context.state,
+        request=context.request,
+        recommendation=context.recommendation,
+        legs=context.legs,
+        alternatives=context.alternatives,
+        agent_actions=context.actions,
+        reasoning=context.reasoning,
     )

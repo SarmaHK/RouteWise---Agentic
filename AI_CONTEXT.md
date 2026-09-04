@@ -110,9 +110,9 @@ B informs, C acts.** See [`docs/PROJECT.md`](docs/PROJECT.md) for exact scope.
 Workstream A proceeds through phases **A1 → A10**.
 
 ```
-A1 Project Foundation        ✅ implemented
-A2 Travel Request Understanding   ← current / understanding implemented
-A3 Agent Architecture
+A1 Project Foundation             ✅ implemented
+A2 Travel Request Understanding   ✅ implemented
+A3 Agent Architecture             ← current / orchestration + decision implemented
 A4 Agent Tool System
 A5 Tool-Calling Orchestrator
 A6 Route Decision Engine
@@ -122,12 +122,14 @@ A9 Final API & Agent State
 A10 Workstream B Handover
 ```
 
-**CURRENT PHASE: A2 — Travel Request Understanding.**
+**CURRENT PHASE: A3 — Agent Orchestration & Decision Engine.**
 
-Do **not** auto-advance into A3 or any later phase. Wait for an explicit human
-instruction. A2 covers request **understanding only** — do not start route planning, Qwen
-tool-calling, agent orchestration, ML models, PostGIS, GTFS ingestion, browser automation,
-booking, or Travel Pass generation — those are later phases.
+Do **not** auto-advance into A4 or any later phase. Wait for an explicit human
+instruction. A3 adds the first real agent reasoning layer — a canonical state machine, an
+execution context, a tool/capability abstraction, a deterministic **mock** candidate provider,
+and a transparent decision engine — wired into `POST /api/route/plan`. All route data is
+**mock**. Do not start real Workstream B/C work (ML models, PostGIS, GTFS ingestion, browser
+automation, booking, Travel Pass generation) or the A4+ tool system — those are later phases.
 
 ---
 
@@ -149,13 +151,13 @@ RouteWise - Agentic/
 │   └── DEMO.md
 ├── frontend/              ← React + Vite + TS app (Workstream A UI + design tokens)
 │   ├── README.md
-│   ├── src/main.tsx · App.tsx                 ← A2 app shell (travel-request input + parsed TravelRequest)
+│   ├── src/main.tsx · App.tsx                 ← A3 app shell (request input → agent progress → mock decision)
 │   ├── src/services/api/                      ← the ONLY backend caller (client · health · routePlan)
 │   ├── src/config/env.ts · src/types/api.ts   ← runtime config + contract-mirroring types
 │   └── src/styles/tokens.css · globals.css    ← CSS source of truth for the design system
-├── backend/               ← FastAPI (Workstream A agent + API) — A1 foundation + A2 request understanding
+├── backend/               ← FastAPI (Workstream A agent + API) — A1 foundation + A2 understanding + A3 agent
 │   ├── README.md
-│   └── app/ (main · config · logging_config · api/ · schemas/ · services/ai/ incl. extraction) · tests/
+│   └── app/ (main · config · logging_config · api/ · schemas/ · agent/ · tools/ · services/ai/ incl. extraction) · tests/
 ├── data/                  ← mock/static data (shared; real GTFS is Workstream B)
 │   └── README.md
 ├── models/                ← ML artifacts (Workstream B — DO NOT implement yet)

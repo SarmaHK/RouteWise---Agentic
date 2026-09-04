@@ -136,7 +136,13 @@ class Leg(BaseModel):
 
 
 class Recommendation(BaseModel):
-    """A recommended (or alternative) route (API_CONTRACTS §3). Foundation shape."""
+    """A recommended (or alternative) route (API_CONTRACTS §3).
+
+    A3 populates this from the deterministic decision engine. ``rationale`` is the headline
+    reason; ``reasons`` is the concise, observable list of decision factors (A3 brief §8/§14.6,
+    additive per API_CONTRACTS §9) — never hidden chain-of-thought. ``trade_offs`` explains why an
+    alternative ranked below the recommendation (AGENT_SPEC §11). Every figure is mock in A3.
+    """
 
     id: str
     summary: str
@@ -148,13 +154,19 @@ class Recommendation(BaseModel):
     delay_risk: Optional[str] = None
     score: Optional[float] = None
     rationale: Optional[str] = None
+    reasons: list[str] = Field(default_factory=list)
     trade_offs: list[str] = Field(default_factory=list)
     is_recommended: bool = False
     data_source: DataSource = DataSource.mock
 
 
 class PlanResponse(BaseModel):
-    """Response for ``POST /api/route/plan`` (API_CONTRACTS §2)."""
+    """Response for ``POST /api/route/plan`` (API_CONTRACTS §2).
+
+    A3 adds one additive field, ``reasoning`` (API_CONTRACTS §9 permits additive changes): the
+    concise, observable explanation of the decision (the ReasoningSummary shown at COMPLETED,
+    DESIGN_SYSTEM §12.9). It never exposes hidden chain-of-thought — only structured factors.
+    """
 
     status: AgentState
     request: Optional[TravelRequest] = Field(
@@ -164,3 +176,7 @@ class PlanResponse(BaseModel):
     legs: list[Leg] = Field(default_factory=list)
     alternatives: list[Recommendation] = Field(default_factory=list)
     agent_actions: list[AgentAction] = Field(default_factory=list)
+    reasoning: Optional[str] = Field(
+        default=None,
+        description="Concise explanation of the decision / clarification (A3, additive).",
+    )

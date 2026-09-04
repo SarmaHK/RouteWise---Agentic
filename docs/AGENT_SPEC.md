@@ -13,8 +13,12 @@
 > **Status:** specification. The **UNDERSTANDING** step (§5) is implemented in **A2** —
 > natural-language extraction into a validated `TravelRequest` (see
 > [`API_CONTRACTS.md` §2.1](API_CONTRACTS.md)), using Qwen behind the existing AI abstraction
-> with a deterministic mock fallback. The remaining agent behavior (orchestration, tool calling,
-> scoring, replanning) is built in **A3–A7**. Do not implement later-phase agent logic during A2.
+> with a deterministic mock fallback. **A3 implements the first orchestration + decision layer**:
+> the canonical state machine and execution context (§5), the tool/capability abstraction (§7,
+> mock/stub only), a deterministic **mock** candidate provider, and the transparent scoring engine
+> (§8–§11) — wired into `POST /api/route/plan`. All route data is **mock**; Qwen is **not** used
+> for route selection. The remaining agent behavior (real tool calling, replanning, execution) is
+> built in **A4–A7**. Do not implement later-phase agent logic during A3.
 
 ---
 
@@ -82,12 +86,12 @@ These nine states are the **only** valid agent states. They drive the UI
 |-------|---------|----------------------------|-------------|
 | **IDLE** | No active task; awaiting a request. | "Ready when you are." | `--state-idle` (muted) |
 | **UNDERSTANDING** | Parsing the request; extracting constraints (**A2 ✅** — extraction into a `TravelRequest`). | "Understanding your request…" | `--state-understanding` (info) |
-| **PLANNING** | Deciding approach and which tools to call. | "Planning your journey…" | `--state-planning` (info) |
-| **SEARCHING** | Querying routes / transit intelligence (tools running). | "Searching routes & checking conditions…" | `--state-searching` (primary) |
-| **EVALUATING** | Comparing candidates; scoring vs constraints/preferences. | "Comparing N routes…" | `--state-evaluating` (secondary) |
+| **PLANNING** | Deciding approach and which tools to call (**A3 ✅**). | "Planning your journey…" | `--state-planning` (info) |
+| **SEARCHING** | Querying routes / transit intelligence (tools running) (**A3 ✅** — mock `search_routes`). | "Searching routes & checking conditions…" | `--state-searching` (primary) |
+| **EVALUATING** | Comparing candidates; scoring vs constraints/preferences (**A3 ✅** — deterministic engine; this is the brief's conceptual **DECIDING** step, the EVALUATING→COMPLETED boundary). | "Comparing N routes…" | `--state-evaluating` (secondary) |
 | **EXECUTING** | Performing actions (availability, booking prep) — simulated in MVP. | "Taking actions…" | `--state-executing` (primary) |
 | **REPLANNING** | Conditions changed; recomputing the route. | "Re-planning due to a delay…" | `--state-replanning` (warning) |
-| **COMPLETED** | A final recommendation + explanation is ready. | "Here's your best route." | `--state-completed` (success) |
+| **COMPLETED** | A final recommendation + explanation is ready (**A3 ✅**). | "Here's your best route." | `--state-completed` (success) |
 | **ERROR** | Something failed; cannot complete without retry/intervention. | "Something went wrong — try again." | `--state-error` (error) |
 
 ### State machine
@@ -111,6 +115,12 @@ Rules:
   **UNDERSTANDING**/**SEARCHING**.
 - **COMPLETED** is terminal for a successful plan (until a new request or a re-plan trigger).
 - The UI always shows **one current state** plus the **history** of steps taken.
+- **A3 implemented path:** `UNDERSTANDING → PLANNING → SEARCHING → EVALUATING → COMPLETED` over
+  mock candidates. The conceptual **DECIDING** step is **not** a separate canonical state — it is
+  the **EVALUATING → COMPLETED** boundary where the deterministic engine picks the recommendation.
+  Conceptual **NEEDS_CLARIFICATION** is **not** a new state either: the agent **stays in
+  UNDERSTANDING**, returns the A2 `clarification_required` flag + questions, and stops before
+  PLANNING. Invalid transitions raise an explicit error — they are never silently coerced.
 
 ### How states drive the UI
 
@@ -153,22 +163,41 @@ Rules:
 - **Idempotent reads** are safe to repeat; `prepare_booking` only **prepares**.
 - **MVP:** all tools are **mocked** behind these signatures; B/C replace them later with **no
   signature change**.
+- **A3 status:** the tool/capability abstraction exists (`backend/app/tools/`). Only `search_routes`
+  returns data — a deterministic **MOCK** candidate set (`data_source: mock`, `status: mock_data`).
+  `get_fare_estimate`, `get_delay_prediction`, `get_route_details`, `check_availability`, and
+  `prepare_booking` are honest **`not_implemented`** stubs and are **not** called for data in A3.
 
 ---
 
 ## 8. Decision making & route scoring
 
-**Conceptual model (refined in A6 — Route Decision Engine):**
+**Model (implemented deterministically in A3 — Route Decision Engine; refined with real data in A6):**
 
 1. **Filter** out any candidate that violates a **hard constraint** (§9). These are invalid.
 2. **Score** survivors on **soft preferences** (§10) → a normalized `score` (0–1).
 3. **Penalize** delay risk and discomfort (e.g., long walks with heavy luggage, many transfers).
 4. **Rank**; pick the top as `recommendation`; keep others as `alternatives` with trade-offs.
-5. **Explain**: produce a `rationale` referencing the user's own constraints/preferences.
+5. **Explain**: produce a `rationale` + concise `reasons` referencing the user's own constraints.
 
-Scoring signals (examples): `total_fare_lkr`, `total_duration_min`, `transfers`, `walking_km`,
-`delay_risk`, mode comfort, luggage fit. Weights are a **later-phase decision (A6)** — record
-them here when chosen. **TBD:** exact scoring formula/weights.
+**A3 scoring formula (transparent, deterministic — `backend/app/agent/decision.py`):**
+
+- Each lower-is-better signal (`walking_km`, `total_duration_min`, `transfers`, `total_fare_lkr`)
+  is **min–max normalized** across the hard-constraint survivors (best → 1.0, worst → 0.0; a signal
+  missing on a candidate earns 0.0 — never fabricated). If all survivors tie on a signal, norm = 1.0.
+- **Base weights:** `walking_km 0.30`, `total_duration_min 0.25`, `transfers 0.20`,
+  `total_fare_lkr 0.25`; `score = Σ(weight × norm)`.
+- **Luggage/preference awareness (§10 golden rule):** `walking_preference = minimize` scales the
+  walking weight ×1.75 (`ok` ×0.6); `luggage = heavy` scales walking ×1.5 **and** transfers ×1.4
+  (`none` scales walking ×0.8). Weights are renormalized to sum to 1.
+- **Delay penalty** subtracted from the score: `none 0`, `low 0.02`, `moderate 0.06`, `high 0.12`.
+- The final `score` is clamped to 0–1 and rounded to 3 decimals. **Rank** by score (tie-break:
+  lower fare → fewer transfers → id).
+
+> Worked example (golden Colombo Fort → Ella): with `heavy` + `minimize`, R1 (least walking,
+> 1 transfer) scores **0.482** and wins; the *same* candidates with **no** preferences select R2
+> (cheaper, faster, direct) at **0.640** — genuine reasoning over data, not a hard-coded winner.
+> These weights are the A3 transparent baseline; **A6** may refine them against real B data.
 
 ---
 
@@ -252,7 +281,10 @@ another, and must **explain** significant trade-offs.
 - Provide a **retry** path where sensible (`retryable` in the error envelope — see
   [`API_CONTRACTS.md` §5](API_CONTRACTS.md)).
 - Legitimate **"no good route"** outcomes are **not** system errors — prefer a `200` response
-  with a clear explanation over an HTTP error (decide once in A6/A9 and document it).
+  with a clear explanation over an HTTP error. **A3 implements this:** when no candidate satisfies
+  the hard constraints (or the corridor has no mock data) the agent returns `200` with
+  `status: COMPLETED`, `recommendation: null`, and an honest `reasoning` (optionally the excluded
+  candidates as clearly-marked alternatives) — never a fabricated pick. (Policy reconfirmed in A6/A9.)
 - Never leave the user with a blank screen, an infinite spinner, or a fabricated success.
 
 ---
@@ -313,7 +345,7 @@ Every completed plan includes a **ReasoningSummary** that:
 
 | Situation | Correct behavior |
 |-----------|------------------|
-| No route within budget | Report honestly; suggest relaxing budget/time; do **not** fake success. |
+| No route within budget | Report honestly; suggest relaxing budget/time; do **not** fake success (**A3 ✅**: `200` + `COMPLETED`, `recommendation: null`, honest `reasoning`, over-budget candidates shown as marked alternatives). |
 | Fare unknown | Call `get_fare_estimate`; if unavailable, say "estimate unavailable" — never invent. |
 | Delay risk high | Surface it; consider re-planning; don't hide it. |
 | Missing destination | Ask or state the assumption; don't guess silently (**A2 ✅**: sets `clarification_required` + a question). |
@@ -326,8 +358,12 @@ Every completed plan includes a **ReasoningSummary** that:
 ## 19. Scope reminder
 
 This document defines **behavior/contract**, not implementation. **A2 — Travel Request
-Understanding** implements the first step only: Qwen-backed **extraction** of a natural-language
-request into a validated `TravelRequest` (§5 UNDERSTANDING), with honest clarification for
-missing hard constraints (§4/§18). The rest of the agent (orchestration, tool-calling loop,
-scoring, replanning) is built in **A3–A7**. During **A2**, do **not** implement later-phase agent
-logic — only keep this spec consistent so all future work aligns.
+Understanding** implemented the first step: Qwen-backed **extraction** of a natural-language
+request into a validated `TravelRequest` (§5 UNDERSTANDING), with honest clarification for missing
+hard constraints (§4/§18). **A3 — Agent Orchestration & Decision Engine** implements the first
+reasoning layer on top: the canonical state machine + execution context (§5), the tool/capability
+abstraction with a deterministic **mock** candidate provider (§7), and the transparent scoring
+engine (§8–§11) that returns a recommendation, alternatives, concise reasons, and an honest action
+trace — all `data_source: mock`. The rest of the agent (real tool-calling loop, replanning,
+execution) is built in **A4–A7**. During **A3**, do **not** implement later-phase agent logic or
+real Workstream B/C functionality — only keep this spec consistent so all future work aligns.

@@ -19,5 +19,5 @@ router = APIRouter(tags=["health"])
 def health() -> HealthResponse:
     """Return a simple liveness response confirming the backend is running."""
     return HealthResponse(
-        status="ok", service="routewise-agentic-backend", phase="A2-understanding"
+        status="ok", service="routewise-agentic-backend", phase="A3-decision"
     )

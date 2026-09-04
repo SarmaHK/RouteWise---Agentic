@@ -5,15 +5,18 @@
 > frontend-only architecture note and covers the **whole system**: frontend → backend →
 > agent → tools → transit intelligence/ML → automation → data/external services.
 >
-> **Status:** **A1 — Project Foundation is implemented.** Beyond the documentation + folder
-> skeleton (every folder carries a `README.md` stating its purpose + owning workstream — no empty
-> folders), a **working foundation scaffold** now exists: a FastAPI backend (config, logging,
-> CORS, `GET /health`, a contract-shaped `POST /api/route/plan` **foundation stub**, structured
-> errors), an isolated **AI service abstraction** (Qwen/Model Studio + a mock fallback), and a
-> React + Vite + TypeScript frontend (app shell + a centralized `services/api` client) — with the
-> design tokens (`frontend/src/styles/`) as the visual source of truth. Everything else here
-> (agent, tools, ML, automation, real UI) remains the **agreed plan** for A2+. Keep it **suitable
-> for a hackathon MVP** — simple, demonstrable, mock-backed.
+> **Status:** **A1 (foundation), A2 (request understanding), and A3 (agent orchestration &
+> decision) are implemented.** A FastAPI backend (config, logging, CORS, `GET /health`,
+> structured errors) now runs a real agent layer: `POST /api/route/plan` extracts a validated
+> `TravelRequest` (A2 — Qwen or a deterministic mock), then `app/agent/` drives the canonical state
+> machine and `app/agent/decision.py` scores **mock** candidates from `app/tools/` (a deterministic
+> mock candidate provider + honest `not_implemented` tool stubs) into a recommendation,
+> alternatives, concise reasons, and an `agent_actions[]` trace. The React + Vite + TypeScript
+> frontend (app shell + a centralized `services/api` client) shows the parsed request, the
+> agent-progress timeline, and the mock decision, with the design tokens (`frontend/src/styles/`)
+> as the visual source of truth. Everything else here (real tools, ML, automation, execution, the
+> full component UI) remains the **agreed plan** for A4+. All route data is **mock**. Keep it
+> **suitable for a hackathon MVP** — simple, demonstrable, mock-backed.
 
 ---
 
@@ -192,8 +195,9 @@ recorded here and in `frontend/README.md`.
 ## 4. Backend architecture (Python / FastAPI)
 
 **Workstream A owns the backend** (agent + API). Structure below — **A1 implemented the
-foundation files** and **A2 added request understanding** (`schemas/travel_request.py`,
-`services/ai/extraction.py`) (✅); `agent/` and `tools/` remain folder stubs until A3+:
+foundation files**, **A2 added request understanding** (`schemas/travel_request.py`,
+`services/ai/extraction.py`), and **A3 added the agent + tools** (`agent/`, `tools/`,
+`schemas/candidate.py`) (✅):
 
 ```
 backend/
@@ -201,12 +205,12 @@ backend/
 │   ├── main.py            # ✅ FastAPI entrypoint, CORS, router registration, error handlers
 │   ├── config.py          # ✅ settings/env (API keys via env only — never committed)
 │   ├── logging_config.py  # ✅ logging foundation
-│   ├── api/               # ✅ health.py · route.py (A2 request understanding) · router.py  (agent status/stream: A5/A8/A9)
-│   ├── schemas/           # ✅ Pydantic models mirroring API_CONTRACTS.md (incl. A2 travel_request.py)
+│   ├── api/               # ✅ health.py · route.py (A3: extraction → agent → decision) · router.py  (agent status/stream: A5/A8/A9)
+│   ├── schemas/           # ✅ Pydantic models mirroring API_CONTRACTS.md (A2 travel_request.py · A3 candidate.py)
 │   ├── services/ai/       # ✅ AI abstraction (base · qwen_client · mock_client · factory) + A2 extraction.py
-│   ├── agent/             # ⏳ A3+: orchestration, decision engine (A2 understanding lives in services/ai/extraction.py)
-│   └── tools/             # ⏳ A4+: tool interfaces + MOCK implementations (A→B/C seam)
-├── tests/                 # ✅ foundation + A2 extraction/understanding tests
+│   ├── agent/             # ✅ A3: state.py (state machine + execution context) · decision.py (scoring) · orchestrator.py
+│   └── tools/             # ✅ A3: base.py (Tool ABC) · candidates.py (mock provider) · capabilities.py · registry.py (A→B/C seam)
+├── tests/                 # ✅ foundation + A2 extraction + A3 state/decision/agent/API tests
 ├── requirements.txt       # ✅ dependencies (requirements.txt chosen over pyproject.toml)
 ├── .env.example           # ✅ config template (never commit .env)
 └── README.md
@@ -233,21 +237,24 @@ loop is:
 UNDERSTAND → REASON → ACT → ADAPT → DELIVER
 ```
 
-Conceptual internal pipeline (built in phases A2–A7; **[Understanding] ✅ A2**):
+Conceptual internal pipeline (built in phases A2–A7; **[Understanding] ✅ A2**, and
+**[Planning]/[Tool calling]/[Evaluation]/[Decision] ✅ A3 — deterministic, over mock data**):
 
 ```
 Travel request (text + structured fields)
    → [Understanding]  ✅ A2: parse → TravelRequest + constraints (hard/soft) + missing-info detection
-   → [Planning]       decide which tools to call and in what order
-   → [Tool calling]   search_routes / get_fare_estimate / get_delay_prediction / … (mock now)
-   → [Evaluation]     filter by hard constraints → score soft preferences → rank
-   → [Decision]       pick recommendation + alternatives + rationale
-   → [Adaptation]     on disruption → REPLANNING loop back to searching
+   → [Planning]       ✅ A3: choose the candidate provider + scoring pass (deterministic, not an LLM)
+   → [Tool calling]   ✅ A3: search_routes (mock provider); fare/delay stubs → A4+
+   → [Evaluation]     ✅ A3: filter hard constraints → score soft prefs → rank (agent/decision.py)
+   → [Decision]       ✅ A3: recommendation + alternatives + concise reasons
+   → [Adaptation]     on disruption → REPLANNING loop back to searching (A4+)
    → [Delivery]       recommendation + explanation + agent_actions (+ Travel Pass data)
 ```
 
 - **Reasoning engine:** **Qwen** via Alibaba Cloud Model Studio. **A2** wires Qwen for request
-  **extraction** (understanding) behind the existing AI abstraction; orchestration/reasoning is A3+.
+  **extraction** (understanding) behind the existing AI abstraction. **A3's route decision is
+  deterministic** (`agent/decision.py` transparent scoring) — Qwen is **not** called for route
+  selection; an LLM tool-calling loop is A5+.
 - **State:** the agent reports one of the **9 canonical states** (see
   [`AGENT_SPEC.md`](AGENT_SPEC.md)); these drive the UI and the `status` field.
 - **Determinism:** same inputs + same mock data ⇒ same recommendation (critical for a reliable
@@ -273,6 +280,12 @@ Travel request (text + structured fields)
 11. On disruption → Agent REPLANNING → repeat 5–9 → updated recommendation
 ```
 
+> **A3 scope:** steps **1–7 and 9–10** are implemented over **mock** candidates (extraction →
+> planning → deterministic scoring → decision → `agent_actions[]` → frontend). Step **8
+> (EXECUTING)** and step **11 (REPLANNING)** are **not** exercised — `prepare_booking` /
+> `check_availability` and disruption handling are honest `not_implemented` stubs (A4+); the agent
+> goes **EVALUATING → COMPLETED**.
+
 Agent steps/states are surfaced to the UI as `agent_actions[]` (embedded) and/or streamed —
 the frontend abstracts the mechanism (see §3.3).
 
@@ -281,9 +294,10 @@ the frontend abstracts the mechanism (see §3.3).
 ## 7. API flow
 
 - Frontend calls **`POST /api/route/plan`** (the reserved primary endpoint; an honest
-  **foundation stub** in A1, fully implemented in **A9**).
+  **foundation stub** in A1, a real **mock agent decision** in **A3**, live-data planning in **A9**).
 - Response carries `status` (canonical agent state), `request` (normalized), `recommendation`,
-  `legs[]`, `alternatives[]`, `agent_actions[]`.
+  `legs[]`, `alternatives[]`, `agent_actions[]`, and `reasoning`. In A3 `legs[]` is empty and all
+  route figures are **mock**; `recommendation`/`alternatives`/`agent_actions` are populated.
 - Optional (later) **`GET /api/agent/status`** and **`GET /api/agent/stream`** for live agent
   activity — mechanism **TBD** in A5/A8/A9.
 - Errors use a structured envelope. Full shapes in

@@ -1,9 +1,10 @@
 /**
- * Shared domain types mirroring docs/API_CONTRACTS.md (A1 foundation + A2 TravelRequest).
+ * Shared domain types mirroring docs/API_CONTRACTS.md (A1 foundation + A2 TravelRequest +
+ * A3 decision).
  *
- * Contract-first: these mirror the backend `schemas/` and API_CONTRACTS.md. The FULL domain
- * types (detailed route/leg/recommendation shapes) are expanded in A8; A1 defines only what
- * the foundation shell + API client need. Keep in sync — do not diverge (types/README.md).
+ * Contract-first: these mirror the backend `schemas/` and API_CONTRACTS.md. A3 adds the
+ * decision shapes (`Recommendation`, `Leg`, `ToolCall`) the agent now returns; the FULL domain
+ * types are further expanded in A8. Keep in sync — do not diverge (types/README.md).
  */
 
 /** The 9 canonical agent states (API_CONTRACTS §2; AGENT_SPEC §5). */
@@ -79,27 +80,82 @@ export interface TravelRequest {
   extraction_source?: ExtractionSource | null;
 }
 
+/** A tool invocation recorded on an agent action (API_CONTRACTS §4). */
+export interface ToolCall {
+  name: string;
+  args?: Record<string, unknown>;
+  status?: string; // pending | running | done | error
+  result_summary?: string | null;
+}
+
 /** One entry of the agent-activity log (API_CONTRACTS §4). */
 export interface AgentAction {
   seq: number;
   state: AgentState;
   label: string;
   detail?: string | null;
+  tool_call?: ToolCall | null;
   status?: string;
   timestamp?: string | null;
   data_source?: DataSource | null;
 }
 
 /**
+ * A single leg of a route (API_CONTRACTS §3). The backend serializes origin/destination under
+ * the `from`/`to` aliases. Legs stay empty in A3 (route details arrive with a future B tool);
+ * the shape is defined now so the contract is faithful and A8 can populate it.
+ */
+export interface Leg {
+  id: string;
+  mode: string; // walk | tuk | bus | train | taxi | ferry
+  from: string;
+  to: string;
+  departure_time?: string | null;
+  arrival_time?: string | null;
+  duration_min?: number | null;
+  fare_lkr?: number | null;
+  walking_km?: number | null;
+  delay_risk?: string | null; // none | low | moderate | high
+  delay_min_estimate?: number | null;
+  notes?: string | null;
+  data_source?: DataSource;
+}
+
+/**
+ * A recommended (or alternative) route (API_CONTRACTS §3), populated by the A3 decision engine.
+ * `rationale` is the headline reason; `reasons` is the concise, observable list of decision
+ * factors (A3 brief §8/§14.6); `trade_offs` explains why an alternative ranked lower. Every
+ * figure is MOCK in A3 (`data_source`), never live transit data.
+ */
+export interface Recommendation {
+  id: string;
+  summary: string;
+  total_duration_min?: number | null;
+  total_fare_lkr?: number | null;
+  transfers?: number | null;
+  walking_km?: number | null;
+  within_budget?: boolean | null;
+  delay_risk?: string | null;
+  score?: number | null;
+  rationale?: string | null;
+  reasons?: string[];
+  trade_offs?: string[];
+  is_recommended?: boolean;
+  data_source?: DataSource;
+}
+
+/**
  * POST /api/route/plan response (API_CONTRACTS §2).
- * A2: `request` is the understood TravelRequest and `status` is UNDERSTANDING;
- * `recommendation`/`legs`/`alternatives` stay empty (loosely typed) until real planning in A3+/A8.
+ * A3: `status` is COMPLETED with a mock `recommendation`, `alternatives`, the full
+ * `agent_actions` trace, and a concise `reasoning` when the request can be planned; it stays
+ * UNDERSTANDING with no recommendation when clarification is required. `legs` remain empty in A3.
  */
 export interface PlanResponse {
   status: AgentState;
   request?: TravelRequest | null;
-  recommendation?: Record<string, unknown> | null;
-  legs?: Record<string, unknown>[];
-  alternatives?: Record<string, unknown>[];
+  recommendation?: Recommendation | null;
+  legs?: Leg[];
+  alternatives?: Recommendation[];
   agent_actions: AgentAction[];
+  reasoning?: string | null;
 }

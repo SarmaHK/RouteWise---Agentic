@@ -5,8 +5,11 @@
 > [`WORKSTREAMS.md`](WORKSTREAMS.md) (who provides what), and
 > [`PROJECT.md`](PROJECT.md) (golden scenario).
 >
-> **Status:** demo **plan** only. Nothing is implemented during A1. This document defines what
-> the demo must show so all three workstreams build toward one coherent story.
+> **Status:** demo **plan** + partial implementation. This document defines what the demo must show
+> so all three workstreams build toward one coherent story. **A3 now demonstrates steps 1–10 of the
+> §3 walkthrough over mock data** (request → understanding → planning → mock search → evaluation →
+> decision → explanation → alternatives, with a MOCK tag); **step 11 (disruption/re-planning) and
+> step 12 (Travel Pass) are not built** (A4+ / Workstream C). All route data is **mock**.
 
 ---
 
@@ -59,6 +62,12 @@ The demo must prove the Agent can **reason**, not recite:
 > Steps 5–6 (transit intelligence) are **Workstream B** territory; steps 11–12 (execution /
 > pass delivery) touch **Workstream C**. In the demo they are backed by **mocks/simulation**
 > behind the real interfaces (see [`WORKSTREAMS.md`](WORKSTREAMS.md)).
+>
+> **A3 coverage:** steps **1–10** run end-to-end over the deterministic **mock** candidate provider
+> — the agent *reasons* (filters hard constraints, scores soft preferences, ranks); it does not
+> recite a hard-coded winner. Step **5** calls `search_routes` only (fares + delay-risk ride on the
+> mock candidates; separate fare/delay tools are honest `not_implemented` stubs, A4+). Steps
+> **11–12** (re-planning, Travel Pass) are **not implemented** yet.
 
 ---
 
@@ -169,4 +178,5 @@ do **not** hard-code the "winner".
 - [ ] Mock/simulated data is clearly labeled; nothing presented as real-time.
 - [ ] Demo is repeatable (deterministic seed) and resilient (fallbacks ready).
 
-> **Do not implement the demo during A1.** This is the target all workstreams build toward.
+> **This is the target all workstreams build toward.** A3 delivers steps 1–10 over mock data; the
+> full demo (including steps 11–12) completes across A4–A9 + Workstreams B/C.

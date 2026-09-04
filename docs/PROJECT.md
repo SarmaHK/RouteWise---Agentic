@@ -20,7 +20,7 @@
 | **Track** | Hospitality & Tourism |
 | **Team size** | 3 members (3 workstreams) |
 | **Reasoning engine** | Qwen (Alibaba Cloud Model Studio) |
-| **Implementation sequencing** | Workstream A built first (phases A1–A2 done); B & C documented, built to the same interfaces |
+| **Implementation sequencing** | Workstream A built first (phases A1–A3 done); B & C documented, built to the same interfaces |
 
 ---
 
@@ -228,13 +228,25 @@ Full definitions + scoring model: [`AGENT_SPEC.md` §8–10](AGENT_SPEC.md).
   - **Scope:** understanding **only** — status `UNDERSTANDING`, no route/search/score (those are A3+).
   - **Frontend:** a minimal travel-request input + parsed-`TravelRequest` display + clarification
     state, using design tokens only. Backend tests cover the 15 required scenarios.
-- **No route-planning features yet (by design).** No orchestration, tool calling, route
-  scoring/decision engine, ML, database, GTFS, automation, or real UI components are built during
-  A2 — those belong to A3+ / Workstream B / Workstream C.
+- **Phase A3 — Agent Orchestration & Decision Engine: COMPLETE.** `POST /api/route/plan` now runs a
+  real (mock-backed) agent decision:
+  - **State machine + execution context:** the 9 canonical `AgentState`s drive an observable
+    `agent_actions[]` trace (UNDERSTANDING → PLANNING → SEARCHING → EVALUATING → COMPLETED).
+  - **Tool/capability abstraction:** a `Tool` ABC + registry (the A→B/C seam) with a deterministic
+    **mock** candidate provider and honest `not_implemented` stubs for fare/delay/booking.
+  - **Decision engine:** transparent **deterministic** scoring — hard constraints filter, soft
+    preferences score (luggage/walking-aware) — producing a recommendation, alternatives, concise
+    **reasons**, and a `reasoning` summary. Qwen is **not** used for route selection.
+  - **Frontend:** an agent-progress timeline, the recommended route (marked **MOCK**), concise
+    reasons, alternatives with trade-offs, and an honest no-route state — design tokens only.
+  - **Scope:** mock data only; no execution/replanning, ML, database, GTFS, or Travel Pass (A4+).
+- **No route-planning features beyond A3's mock decision (by design).** No real tool calling,
+  execution/booking, disruption replanning, ML, database, GTFS, automation, or Travel Pass are
+  built yet — those belong to A4+ / Workstream B / Workstream C. All A3 route data is **mock**.
 - **Honesty:** real Qwen connectivity is **not** claimed unless a key is configured; with no key the
   backend uses the mock extractor/client (see [`AGENT_SPEC.md` §15](AGENT_SPEC.md)).
-- **Next (when instructed):** Workstream A phase **A3 — Agent Architecture**; B and C proceed
-  against the agreed interfaces.
+- **Next (when instructed):** Workstream A phase **A4 — Agent Tool System** (real tool definitions +
+  mock implementations); B and C proceed against the agreed interfaces.
 
 ---
 
@@ -244,7 +256,7 @@ Full definitions + scoring model: [`AGENT_SPEC.md` §8–10](AGENT_SPEC.md).
 |-------|------|-------|
 | **A1** | **Project Foundation** ✅ | Docs, design system, tokens, architecture, contracts **+ a working foundation scaffold (FastAPI app + React shell + AI-service abstraction + tests)**. |
 | **A2** | **Travel Request Understanding** ✅ | NLU: request → validated `TravelRequest` + constraints (extraction only; no route planning). |
-| A3 | Agent Architecture | Agent state model, orchestration skeleton. |
+| **A3** | **Agent Architecture** ✅ | Agent state model + execution context, orchestration, deterministic decision/scoring over mock candidates. |
 | A4 | Agent Tool System | Tool definitions + mock implementations. |
 | A5 | Tool-Calling Orchestrator | Qwen tool-calling loop (decide → call → observe). |
 | A6 | Route Decision Engine | Candidate evaluation, scoring, selection, explanation. |

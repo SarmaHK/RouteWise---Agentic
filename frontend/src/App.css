@@ -1,12 +1,13 @@
 /*
-  RouteWise Agentic — App shell styles (Phase A2 — request understanding).
+  RouteWise Agentic — App shell styles (Phase A3 — agent decision; builds on A2 understanding).
   Co-located with App.tsx. Consumes ONLY tokens from styles/tokens.css
   (DEVELOPMENT_RULES rules 6–7; DESIGN_SYSTEM golden rule 1: no magic values).
 
   This is the app SHELL, not a registered component — the shared component
   registry (DESIGN_SYSTEM §13) is built in phase A8. Layout follows §12.1; the four
   interface states follow §12.8 (skeleton loading, no bouncing spinner); the natural-language
-  request field is the HERO input (§12.5).
+  request field is the HERO input (§12.5). A3 adds the agent-progress timeline (§11.5 state
+  colors, §11.7 activity) and route cards (§11.6 accents) — all token-driven, no new tokens.
 */
 
 /* ---------- Header (§12.1: sticky, --header-height, bottom border) ---------- */
@@ -320,7 +321,7 @@
   color: var(--color-text-muted);
 }
 
-/* ---------- Parsed result (A2) ---------- */
+/* ---------- Parsed result + decision (A2/A3) ---------- */
 .result {
   display: flex;
   flex-direction: column;
@@ -333,35 +334,254 @@
   color: var(--color-text-secondary);
 }
 
-.actions-list {
+/* ---------- Agent-progress timeline (A3; §11.7 activity, §11.5 state colors) ---------- */
+.agent-timeline {
   list-style: none;
   margin: 0;
   padding: 0;
   display: flex;
   flex-direction: column;
+}
+
+.agent-timeline__item {
+  position: relative;
+  display: grid;
+  grid-template-columns: var(--status-node-size) 1fr;
+  gap: var(--space-3);
+  padding-bottom: var(--space-4);
+}
+
+/* Connector between nodes (§11.7 --timeline-line-*). */
+.agent-timeline__item:not(:last-child)::before {
+  content: '';
+  position: absolute;
+  left: calc(var(--status-node-size) / 2);
+  top: var(--status-node-size);
+  bottom: 0;
+  width: var(--timeline-line-width);
+  transform: translateX(calc(var(--timeline-line-width) / -2));
+  background-color: var(--timeline-line-color);
+}
+
+.agent-timeline__node {
+  width: var(--status-node-size);
+  height: var(--status-node-size);
+  margin-top: var(--space-1);
+  border-radius: var(--radius-full);
+  background-color: var(--state-idle);
+}
+
+.agent-timeline__content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.agent-timeline__head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
   gap: var(--space-2);
 }
 
-.actions-list__item {
+.agent-timeline__state {
+  font-family: var(--font-mono);
+  font-size: var(--text-mono);
+  font-weight: var(--font-semibold);
+  letter-spacing: var(--tracking-wide);
+  color: var(--color-text-primary);
+}
+
+.agent-timeline__label {
+  font-size: var(--text-body-sm);
+  color: var(--color-text-primary);
+}
+
+.agent-timeline__detail {
+  font-size: var(--text-body-sm);
+  color: var(--timeline-trace-text);
+  line-height: var(--leading-snug);
+}
+
+.agent-timeline__tool {
+  font-size: var(--text-label);
+  color: var(--color-text-muted);
+}
+
+/* Canonical state → node color (§11.5; AGENT_SPEC §5 — never invent new states). */
+.agent-timeline__item[data-state='understanding'] .agent-timeline__node {
+  background-color: var(--state-understanding);
+}
+.agent-timeline__item[data-state='planning'] .agent-timeline__node {
+  background-color: var(--state-planning);
+}
+.agent-timeline__item[data-state='searching'] .agent-timeline__node {
+  background-color: var(--state-searching);
+}
+.agent-timeline__item[data-state='evaluating'] .agent-timeline__node {
+  background-color: var(--state-evaluating);
+}
+.agent-timeline__item[data-state='executing'] .agent-timeline__node {
+  background-color: var(--state-executing);
+}
+.agent-timeline__item[data-state='replanning'] .agent-timeline__node {
+  background-color: var(--state-replanning);
+}
+.agent-timeline__item[data-state='completed'] .agent-timeline__node {
+  background-color: var(--state-completed);
+}
+.agent-timeline__item[data-state='error'] .agent-timeline__node {
+  background-color: var(--state-error);
+}
+
+/* The live/active step (e.g. the clarification gate) is emphasized — not by color alone (§14). */
+.agent-timeline__item[data-status='active'] .agent-timeline__node {
+  box-shadow: var(--shadow-glow-primary);
+  animation: rw-pulse var(--duration-slower) var(--ease-standard) infinite;
+}
+
+/* ---------- Route cards (A3; §11.6 --route-accent-*) ---------- */
+.route-card {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: var(--space-3);
+  padding: var(--card-padding-compact);
+  border-radius: var(--card-radius);
+  background-color: var(--color-surface-elevated);
+  border: var(--card-border);
+  border-left: var(--route-accent-width) solid var(--route-accent-alternative);
+}
+
+.route-card--recommended {
+  border-left-color: var(--route-accent-recommended);
+  box-shadow: var(--card-shadow);
+}
+
+.route-card__header {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.route-card__heading {
+  min-width: 0;
+}
+
+.route-card__title {
+  font-size: var(--text-h4);
+  color: var(--color-text-primary);
+}
+
+.route-card__title--alt {
+  font-family: var(--font-mono);
+  font-size: var(--text-body);
+}
+
+.route-card__summary {
+  margin-top: var(--space-1);
+  font-size: var(--text-body-sm);
+  color: var(--color-text-secondary);
+  line-height: var(--leading-snug);
+}
+
+.route-card__subtitle {
+  font-size: var(--text-label);
+  font-weight: var(--font-semibold);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.route-card__metrics {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(var(--space-24), 1fr));
+  gap: var(--space-2);
+}
+
+.metric {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-md);
   background-color: var(--color-surface-sunken);
   border: var(--border-width) solid var(--color-border);
 }
 
-.actions-list__state {
-  font-family: var(--font-mono);
-  font-size: var(--text-mono);
-  font-weight: var(--font-semibold);
-  color: var(--color-primary);
+.metric__label {
+  font-size: var(--text-label);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--color-text-muted);
 }
 
-.actions-list__label {
-  font-size: var(--text-body-sm);
+.metric__value {
+  font-size: var(--text-body);
   color: var(--color-text-primary);
+}
+
+.route-card__reasons,
+.route-card__tradeoffs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.reasons-list {
+  margin: 0;
+  padding-left: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: var(--text-body-sm);
+  color: var(--color-text-secondary);
+  line-height: var(--leading-snug);
+}
+
+.route-card__mock {
+  border-top: var(--border-width) solid var(--color-border);
+  padding-top: var(--space-2);
+}
+
+.route-card__excluded {
+  font-size: var(--text-body-sm);
+  color: var(--color-warning);
+}
+
+/* ---------- Reasoning summary (A3; DESIGN_SYSTEM §12.9) ---------- */
+.decision-reasoning {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background-color: var(--timeline-trace-bg);
+  border: var(--border-width) solid var(--color-border);
+  font-size: var(--text-body-sm);
+  color: var(--color-text-secondary);
+  line-height: var(--leading-normal);
+}
+
+.decision-reasoning__label {
+  font-weight: var(--font-semibold);
+  color: var(--color-text-primary);
+}
+
+/* ---------- Alternatives group + result sub-headings (A3) ---------- */
+.alternatives {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.alternatives__title,
+.result__subtitle {
+  font-size: var(--text-body);
+  font-weight: var(--font-semibold);
+  color: var(--color-text-primary);
+}
+
+.result__subtitle {
+  margin-top: var(--space-1);
 }
 
 /* data_source tag — mono (data), badge tokens (§11.4) */

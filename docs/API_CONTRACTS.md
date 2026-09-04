@@ -22,7 +22,7 @@ used throughout, so no reader mistakes a plan for a built feature:
 
 | Contract element | Status | Owner / phase |
 |------------------|--------|---------------|
-| `POST /api/route/plan` shape (§2) | CURRENT (reserved) | A — **A2 request understanding** (extraction only); real planning A9 |
+| `POST /api/route/plan` shape (§2) | CURRENT (implemented) | A — **A3 agent decision** (mock candidates + deterministic scoring); real transit data A9 |
 | `TravelRequest` normalized-request shape (§2.1) | CURRENT (implemented) | A — A2 |
 | `GET /health` liveness probe (§2) | CURRENT (implemented) | A — A1 |
 | Route / leg / recommendation shapes (§3) | CURRENT (mock) | A → B (real data) |
@@ -65,12 +65,16 @@ used throughout, so no reader mistakes a plan for a built feature:
 Submit a travel request; receive the agent's plan/recommendation.
 
 - **Owner:** Workstream A.
-- **Status:** contract reserved; the **real** planning/decision implementation lands in **A9 —
-  Final API & Agent State**. **A1 shipped an honest foundation stub** (`status: IDLE`). **A2 now
-  implements Travel Request Understanding** at this path: it extracts the natural-language request
-  into a normalized **`TravelRequest`** (§2.1) and returns `status: UNDERSTANDING` with empty
-  `recommendation`/`legs`/`alternatives` and a single explanatory `agent_actions[]` entry. A2
-  **understands only** — it does **not** plan, search, or score a route (that arrives in A3+).
+- **Status:** the **real** transit-data planning lands in **A9 — Final API & Agent State**.
+  **A1 shipped an honest foundation stub** (`status: IDLE`); **A2 implemented Travel Request
+  Understanding** (extraction into a `TravelRequest`, §2.1). **A3 now implements the agent
+  orchestration & decision layer** at this path: after extraction it drives the canonical state
+  machine (`UNDERSTANDING → PLANNING → SEARCHING → EVALUATING → COMPLETED`), calls a **mock**
+  `search_routes` tool, and a **deterministic decision engine** returns a `recommendation`,
+  `alternatives`, the full `agent_actions[]` trace, and a concise `reasoning` — all
+  `data_source: mock`. If a hard constraint is missing the agent **stops before deciding** and
+  returns `status: UNDERSTANDING` with the clarification (A2 behaviour preserved). Real transit
+  search / ML scoring remains FUTURE (Workstream B, surfaced in A9).
 
 #### Request (conceptual)
 
@@ -120,18 +124,20 @@ Submit a travel request; receive the agent's plan/recommendation.
   "recommendation": {},
   "legs": [],
   "alternatives": [],
-  "agent_actions": []
+  "agent_actions": [],
+  "reasoning": "..."
 }
 ```
 
 | Field | Type | Notes |
 |-------|------|-------|
-| `status` | enum | One of the canonical **Agent states** ([`AGENT_SPEC.md` §5](AGENT_SPEC.md)): `IDLE, UNDERSTANDING, PLANNING, SEARCHING, EVALUATING, EXECUTING, REPLANNING, COMPLETED, ERROR`. **A2 returns `UNDERSTANDING`** (extraction only); a finished plan returns `COMPLETED` (A9). |
+| `status` | enum | One of the canonical **Agent states** ([`AGENT_SPEC.md` §5](AGENT_SPEC.md)): `IDLE, UNDERSTANDING, PLANNING, SEARCHING, EVALUATING, EXECUTING, REPLANNING, COMPLETED, ERROR`. **A3 returns `COMPLETED`** with a mock decision, or **`UNDERSTANDING`** when clarification is required (the agent stops before deciding); live-data planning matures in A9. |
 | `request` | object | The **normalized/extracted** `TravelRequest` (§2.1) the agent understood: origin, destination, hard constraints, soft preferences, and any **missing info**/clarification it detected. Lets the UI echo constraints back. |
 | `recommendation` | object | The chosen route + rationale. See §3. |
 | `legs` | array | Ordered legs of the recommended route. See §3. |
 | `alternatives` | array | Other candidate routes with trade-offs (same shape as recommendation). |
 | `agent_actions` | array | Ordered log of what the agent did: states entered, tools called, results summary, decisions. Drives the Agent activity UI. See §4. |
+| `reasoning` | string? | **Added in A3** (additive, §9). A concise, observable explanation of the decision or clarification (feeds `ReasoningSummary`, [`DESIGN_SYSTEM.md` §12.9](DESIGN_SYSTEM.md)). Never hidden chain-of-thought. |
 
 #### 2.1 `TravelRequest` — the normalized request (A2)
 
@@ -208,6 +214,7 @@ refined in later phases — **update this doc when that happens**.
   "delay_risk": "low",
   "score": 0.87,
   "rationale": "Meets your LKR 2,000 budget, minimizes walking with a heavy bag, and avoids a risky connection.",
+  "reasons": ["Within your LKR 2,000 budget.", "Suitable for heavy luggage.", "Least walking of the viable routes."],
   "trade_offs": ["Slightly longer than the fastest option"],
   "is_recommended": true,
   "data_source": "mock"
@@ -241,8 +248,8 @@ refined in later phases — **update this doc when that happens**.
 | `*_min` / `*_km` | number | Durations in **minutes**, distances in **km** — explicit units in names. |
 | `delay_risk` | enum | `none, low, moderate, high`. Maps to `DelayBadge` tones. |
 | `within_budget` | boolean | Hard-constraint check result; drives success/error styling. |
-| `score` | number | 0–1 normalized ranking from the decision engine (A6). |
-| `rationale` / `trade_offs` | string / array | Human explanation (feeds `ReasoningSummary`). |
+| `score` | number | 0–1 normalized ranking from the decision engine (**A3** deterministic scoring; refined with real data in A6). |
+| `rationale` / `reasons` / `trade_offs` | string / array | Human explanation (feeds `ReasoningSummary`). `rationale` = headline reason; **`reasons`** (added in A3) = the concise list of observable decision factors; `trade_offs` = why an alternative ranked below the recommendation. |
 | `data_source` | enum | `mock` \| `simulated` \| `live`. **Honesty flag** — MVP is `mock`/`simulated`. |
 
 ---
@@ -380,6 +387,9 @@ record the final decision here.
 This document is the contract. Once the frontend or backend consumes a shape:
 
 - **Additive** changes (new optional fields) are allowed — note them here.
+  - **A3 (agent decision):** added `PlanResponse.reasoning` (optional string) and
+    `Recommendation.reasons` (optional string[]). Both are additive — the A2 request contract and
+    every pre-existing response field are unchanged, so no consumer breaks.
 - **Breaking** changes require a proposal + version bump (§1.6) and updates to consumers.
 - Never change a contract silently in code without updating this file in the same change.
 
@@ -409,7 +419,7 @@ AI Agent (Qwen) — Workstream A
 | From → To | Channel / contract | Status |
 |-----------|--------------------|--------|
 | Frontend → Backend | `POST /api/route/plan` (§2) | CURRENT (mock) |
-| Backend → Frontend | plan response: `recommendation` / `legs` / `alternatives` / `agent_actions` (§2–4) | CURRENT (mock) |
+| Backend → Frontend | plan response: `recommendation` / `legs` / `alternatives` / `agent_actions` / `reasoning` (§2–4) | CURRENT (mock — A3 decision) |
 | Backend → Frontend (live) | `GET /api/agent/status` · `GET /api/agent/stream` (§7) | FUTURE (reserved) |
 | Agent → B tools | `search_routes`, `get_fare_estimate`, `get_delay_prediction`, `get_route_details` (§6) | CURRENT signature / FUTURE impl |
 | Agent → C tools | `check_availability`, `prepare_booking` (§6) | CURRENT signature / FUTURE impl |

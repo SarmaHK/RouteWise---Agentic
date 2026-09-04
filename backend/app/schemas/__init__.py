@@ -4,6 +4,7 @@ Import from here so routers/services share one source of typed shapes. Field nam
 ``snake_case`` and enums are ``UPPER_SNAKE_CASE`` per API_CONTRACTS §8.
 """
 
+from app.schemas.candidate import CandidateAvailability, RouteCandidate
 from app.schemas.common import ErrorDetail, ErrorResponse, HealthResponse
 from app.schemas.route import (
     AgentAction,
@@ -23,6 +24,8 @@ from app.schemas.travel_request import (
 )
 
 __all__ = [
+    "CandidateAvailability",
+    "RouteCandidate",
     "ErrorDetail",
     "ErrorResponse",
     "HealthResponse",
