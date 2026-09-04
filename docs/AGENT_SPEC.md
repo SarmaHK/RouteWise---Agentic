@@ -17,8 +17,13 @@
 > the canonical state machine and execution context (§5), the tool/capability abstraction (§7,
 > mock/stub only), a deterministic **mock** candidate provider, and the transparent scoring engine
 > (§8–§11) — wired into `POST /api/route/plan`. All route data is **mock**; Qwen is **not** used
-> for route selection. The remaining agent behavior (real tool calling, replanning, execution) is
-> built in **A4–A7**. Do not implement later-phase agent logic during A3.
+> for route selection. **A4 turns that tool abstraction into a clean capability-execution system**
+> (§7): a structured `ToolResult`, Pydantic input validation, an explicit availability model, and a
+> safe `ToolExecutor` (timeout + exception/malformed guards) behind the registry — still
+> orchestrator-controlled and still **mock** (only `search_routes` returns data; the rest are honest
+> `NOT_IMPLEMENTED` stubs). The remaining agent behavior (the multi-step Qwen tool-calling loop,
+> replanning, execution, real B/C intelligence) is built in **A5–A7**. Do not implement later-phase
+> agent logic during A4.
 
 ---
 
@@ -163,10 +168,33 @@ Rules:
 - **Idempotent reads** are safe to repeat; `prepare_booking` only **prepares**.
 - **MVP:** all tools are **mocked** behind these signatures; B/C replace them later with **no
   signature change**.
-- **A3 status:** the tool/capability abstraction exists (`backend/app/tools/`). Only `search_routes`
-  returns data — a deterministic **MOCK** candidate set (`data_source: mock`, `status: mock_data`).
-  `get_fare_estimate`, `get_delay_prediction`, `get_route_details`, `check_availability`, and
-  `prepare_booking` are honest **`not_implemented`** stubs and are **not** called for data in A3.
+- **A4 status — the capability-execution system (`backend/app/tools/`).** The A3 seam is now a
+  clean, safe contract the agent (and, later, an LLM) can rely on:
+  - **Tool contract (`base.py`):** each tool declares `name` / `description` / `input_schema` /
+    `output_schema`, an `availability`, a `data_source`, an optional Pydantic `args_model`, and an
+    `execute(**kwargs) -> ToolResult`. `describe()` exposes this metadata (no implementation
+    internals).
+  - **Result schema (`ToolResult`):** `{ success, tool_name, data_source, data, error{code,message} }`
+    (plus `status` / `message` / `meta` for the trace). `success` is **derived** (`error is None`) so
+    it can never contradict the error; `ToolResult.failure(...)` builds a structured failure.
+  - **Availability model (`ToolAvailability`):** `AVAILABLE` / `NOT_IMPLEMENTED` / `DISABLED` /
+    `ERROR` — separating "the tool exists" from "it can currently return data". Provenance is **not**
+    an availability concern; it lives on `data_source` (`mock` in A4).
+  - **Registry (`registry.py`):** `register` (rejects duplicates with `DuplicateToolError`) / `get` /
+    `names` / `list_available` / `status` / `describe` / `execute(name, payload)`; `call(name, **kw)`
+    is the preserved A3 keyword form. An unknown name is a structured `UNKNOWN_TOOL` failure, never
+    an exception.
+  - **Executor (`executor.py`):** the single safe layer — **availability gate → Pydantic input
+    validation → bounded execution (timeout) → guards**. Any exception becomes `EXECUTION_ERROR`, a
+    non-`ToolResult` return becomes `MALFORMED_RESULT`, bad input becomes `INVALID_INPUT`, and a
+    `not_implemented` / `disabled` / `error` tool never runs. It never raises to the agent and never
+    invents data.
+  - **Mock/future boundary:** only `search_routes` is `AVAILABLE` (a deterministic **MOCK** candidate
+    set — `data_source: mock`, `status: mock_data`). `get_fare_estimate`, `get_delay_prediction`,
+    `get_route_details`, `check_availability`, and `prepare_booking` are honest **`NOT_IMPLEMENTED`**
+    stubs (owned by B/C); the executor's gate means they can **never** fabricate a success (§16).
+  - Invocation stays **orchestrator-controlled** in A4; the multi-step **Qwen** tool-calling loop is
+    **A5**.
 
 ---
 
@@ -364,6 +392,12 @@ hard constraints (§4/§18). **A3 — Agent Orchestration & Decision Engine** im
 reasoning layer on top: the canonical state machine + execution context (§5), the tool/capability
 abstraction with a deterministic **mock** candidate provider (§7), and the transparent scoring
 engine (§8–§11) that returns a recommendation, alternatives, concise reasons, and an honest action
-trace — all `data_source: mock`. The rest of the agent (real tool-calling loop, replanning,
-execution) is built in **A4–A7**. During **A3**, do **not** implement later-phase agent logic or
-real Workstream B/C functionality — only keep this spec consistent so all future work aligns.
+trace — all `data_source: mock`. **A4 — Tool System & Capability Execution** hardens that tool
+abstraction into a clean capability-execution system (§7): a structured `ToolResult`, Pydantic input
+validation, an explicit `AVAILABLE`/`NOT_IMPLEMENTED`/`DISABLED`/`ERROR` availability model, a
+duplicate-rejecting registry, and a safe `ToolExecutor` (availability gate + timeout +
+exception/malformed guards) — still orchestrator-controlled, still **mock**, with the future B/C
+capabilities left as honest `NOT_IMPLEMENTED` stubs. The rest of the agent (the multi-step Qwen
+tool-calling loop, replanning, execution, real B/C intelligence) is built in **A5–A7**. During
+**A4**, do **not** implement later-phase agent logic or real Workstream B/C functionality — only
+keep this spec consistent so all future work aligns.

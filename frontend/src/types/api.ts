@@ -80,12 +80,23 @@ export interface TravelRequest {
   extraction_source?: ExtractionSource | null;
 }
 
-/** A tool invocation recorded on an agent action (API_CONTRACTS §4). */
+/**
+ * A tool invocation recorded on an agent action (API_CONTRACTS §4).
+ *
+ * A4 adds two additive, optional fields so the timeline can show tool-execution status safely
+ * (A4 brief §15/§17): `availability` (the resolved tool's capability state) and `data_source`
+ * (this call's provenance). Both may be absent on older responses — the UI renders them only when
+ * present, so the A3 contract is preserved.
+ */
 export interface ToolCall {
   name: string;
   args?: Record<string, unknown>;
   status?: string; // pending | running | done | error
   result_summary?: string | null;
+  /** Resolved tool capability state (A4): available | not_implemented | disabled | error. */
+  availability?: string | null;
+  /** Provenance of this tool call's output (A4). */
+  data_source?: DataSource | null;
 }
 
 /** One entry of the agent-activity log (API_CONTRACTS §4). */

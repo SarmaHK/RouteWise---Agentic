@@ -1,30 +1,35 @@
-"""Concrete A3 capabilities (Workstream A, Phase A3) — one mock, the rest honest stubs.
+"""Concrete A4 capabilities (Workstream A, Phase A4) — one mock, the rest honest stubs.
 
 The canonical tool names below come from API_CONTRACTS §6 / AGENT_SPEC §7 (the source of truth),
-which ``app/tools/README.md`` also lists. The A3 brief's examples (transit_search,
-fare_estimation, delay_prediction, seat_availability) map onto these fixed names:
+which ``app/tools/README.md`` also lists. The A4 brief's examples (transit_search, fare_estimation,
+delay_prediction, seat_availability) map onto these fixed names:
 
 ========================  ====================  =========  ==========================
-Tool name                 A3 status             Owner      Brief example
+Tool name                 A4 availability       Owner      Brief example
 ========================  ====================  =========  ==========================
-``search_routes``         mock data             B (future) transit_search
-``get_fare_estimate``     not implemented       B          fare_estimation
-``get_delay_prediction``  not implemented       B          delay_prediction
-``get_route_details``     not implemented       B          —
-``check_availability``    not implemented       C          seat_availability
-``prepare_booking``       not implemented       C          —
+``search_routes``         available (mock)      B (future) transit_search
+``get_fare_estimate``     not_implemented       B          fare_estimation
+``get_delay_prediction``  not_implemented       B          delay_prediction
+``get_route_details``     not_implemented       B          —
+``check_availability``    not_implemented       C          seat_availability
+``prepare_booking``       not_implemented       C          —
 ========================  ====================  =========  ==========================
 
-Only ``search_routes`` returns data in A3, and that data is explicitly mock (from
-:class:`~app.tools.candidates.MockCandidateProvider`). Every other capability returns an honest
-``not_implemented`` result — the seam exists and is callable, but nothing is fabricated
-(A3 brief §6/§17; AGENT_SPEC §16). B/C replace these with real implementations later with no
-signature change (API_CONTRACTS §6/§9).
+Only ``search_routes`` returns data in A4 — ``availability=available`` with ``data_source=mock``
+(from :class:`~app.tools.candidates.MockCandidateProvider`), so it exercises the full clean tool
+contract (validate → execute → structured result). Every other capability returns an honest
+``NOT_IMPLEMENTED`` result — the seam exists and is callable, but nothing is fabricated
+(A4 brief §10/§21; AGENT_SPEC §16). B/C replace these with real implementations later with **no
+signature change** (API_CONTRACTS §6/§9): they flip ``availability`` to ``available`` and implement
+``execute`` behind the same ``args_model`` / ``ToolResult`` contract.
 """
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Optional
+
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.schemas.route import DataSource
 from app.tools.base import (
@@ -37,11 +42,32 @@ from app.tools.base import (
 from app.tools.candidates import MockCandidateProvider
 
 
+class SearchRoutesArgs(BaseModel):
+    """Validated input for ``search_routes`` (A4 brief §6; signature per API_CONTRACTS §6).
+
+    ``origin``/``destination`` are required and non-empty; ``departure_time``/``preferences`` are
+    optional and forward-compatible (the mock provider ignores them, a real B provider may not).
+    ``extra="ignore"`` drops undeclared keys so malformed input never reaches the implementation.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    origin: str = Field(min_length=1, description="Trip origin, e.g. 'Colombo Fort'.")
+    destination: str = Field(min_length=1, description="Trip destination, e.g. 'Ella'.")
+    departure_time: Optional[datetime] = Field(
+        default=None, description="Optional departure time (forward-compatible; unused by mock)."
+    )
+    preferences: dict[str, Any] = Field(
+        default_factory=dict, description="Optional soft-preference bag (forward-compatible)."
+    )
+
+
 class MockRouteSearchTool(Tool):
     """``search_routes`` — return deterministic mock candidates for a corridor.
 
-    This is the one capability that produces data in A3. The data is mock and labelled as such;
-    Workstream B later supplies real candidates through the same signature.
+    This is the one capability that produces data in A4. The data is mock and labelled as such
+    (``data_source=mock``); the tool itself is ``available`` so it runs the full contract. Workstream
+    B later supplies real candidates through the same signature and ``args_model``.
     """
 
     name = "search_routes"
@@ -49,10 +75,14 @@ class MockRouteSearchTool(Tool):
     input_schema = {
         "origin": "str (required)",
         "destination": "str (required)",
+        "departure_time": "datetime (optional)",
+        "preferences": "dict (optional)",
     }
     output_schema = {"candidates": "list[RouteCandidate]"}
-    availability = ToolAvailability.mock
+    availability = ToolAvailability.available
+    data_source = DataSource.mock
     owner = "B"
+    args_model = SearchRoutesArgs
 
     def __init__(self, provider: Optional[MockCandidateProvider] = None) -> None:
         self._provider = provider or MockCandidateProvider()
@@ -67,9 +97,10 @@ class MockRouteSearchTool(Tool):
                 data_source=DataSource.mock,
                 data=[],
                 message=(
-                    f"No mock candidate data for '{origin}' → '{destination}' in Phase A3."
+                    f"No mock candidate data for '{origin}' → '{destination}' yet."
                 ),
                 meta={"corridor_known": False},
+                tool_name=self.name,
             )
         return ToolResult(
             status=ToolStatus.mock_data,
@@ -80,13 +111,20 @@ class MockRouteSearchTool(Tool):
                 f"'{origin}' → '{destination}'."
             ),
             meta={"corridor_known": True},
+            tool_name=self.name,
         )
 
 
 class _NotImplementedTool(Tool):
-    """Base for A3 stub capabilities: honest 'not built yet' with a fixed signature."""
+    """Base for A4 stub capabilities: honest 'not built yet' with a fixed signature.
+
+    ``availability`` stays ``not_implemented``, so the executor's availability gate returns the
+    honest result without ever running ``execute`` (A4 brief §8/§21). ``execute`` is kept as a
+    defensive fallback for a direct call and to satisfy the :class:`Tool` ABC.
+    """
 
     availability = ToolAvailability.not_implemented
+    data_source = DataSource.mock
 
     def execute(self, **kwargs: Any) -> ToolResult:
         return not_implemented_result(self.name, self.owner)
@@ -113,7 +151,7 @@ class DelayPredictionTool(_NotImplementedTool):
 
 
 class RouteDetailsTool(_NotImplementedTool):
-    """``get_route_details`` — stub; leg-by-leg detail is Workstream B (A4+/A6)."""
+    """``get_route_details`` — stub; leg-by-leg detail is Workstream B (A6+)."""
 
     name = "get_route_details"
     description = "Return full leg-by-leg detail for a chosen route."

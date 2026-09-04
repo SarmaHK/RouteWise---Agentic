@@ -94,12 +94,25 @@ class PlanRequest(BaseModel):
 
 
 class ToolCall(BaseModel):
-    """A tool invocation recorded in an agent action (API_CONTRACTS §4)."""
+    """A tool invocation recorded in an agent action (API_CONTRACTS §4).
+
+    A4 adds two **additive, optional** fields so the UI can show tool-execution status safely
+    (A4 brief §15/§17): ``availability`` — the resolved tool's capability state (``available`` /
+    ``not_implemented`` / ``disabled`` / ``error``) — and ``data_source``, the provenance of this
+    call's output. Both default to ``None`` to preserve the A3 contract.
+    """
 
     name: str
     args: dict[str, Any] = Field(default_factory=dict)
     status: str = "done"  # pending | running | done | error
     result_summary: Optional[str] = None
+    availability: Optional[str] = Field(
+        default=None,
+        description="Resolved tool capability state (A4, additive): available | not_implemented | disabled | error.",
+    )
+    data_source: Optional[DataSource] = Field(
+        default=None, description="Provenance of this tool call's output (A4, additive)."
+    )
 
 
 class AgentAction(BaseModel):

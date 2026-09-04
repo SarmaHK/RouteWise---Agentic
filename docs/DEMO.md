@@ -6,10 +6,12 @@
 > [`PROJECT.md`](PROJECT.md) (golden scenario).
 >
 > **Status:** demo **plan** + partial implementation. This document defines what the demo must show
-> so all three workstreams build toward one coherent story. **A3 now demonstrates steps 1–10 of the
+> so all three workstreams build toward one coherent story. **A3 demonstrates steps 1–10 of the
 > §3 walkthrough over mock data** (request → understanding → planning → mock search → evaluation →
-> decision → explanation → alternatives, with a MOCK tag); **step 11 (disruption/re-planning) and
-> step 12 (Travel Pass) are not built** (A4+ / Workstream C). All route data is **mock**.
+> decision → explanation → alternatives, with a MOCK tag), and **A4 hardens the tool seam behind
+> step 5** (a real registry + executor; the tool trace now shows each tool's availability + data
+> source). **Step 11 (disruption/re-planning) and step 12 (Travel Pass) are not built** (A5+ /
+> Workstream C). All route data is **mock**.
 
 ---
 
@@ -63,11 +65,13 @@ The demo must prove the Agent can **reason**, not recite:
 > pass delivery) touch **Workstream C**. In the demo they are backed by **mocks/simulation**
 > behind the real interfaces (see [`WORKSTREAMS.md`](WORKSTREAMS.md)).
 >
-> **A3 coverage:** steps **1–10** run end-to-end over the deterministic **mock** candidate provider
-> — the agent *reasons* (filters hard constraints, scores soft preferences, ranks); it does not
-> recite a hard-coded winner. Step **5** calls `search_routes` only (fares + delay-risk ride on the
-> mock candidates; separate fare/delay tools are honest `not_implemented` stubs, A4+). Steps
-> **11–12** (re-planning, Travel Pass) are **not implemented** yet.
+> **A3/A4 coverage:** steps **1–10** run end-to-end over the deterministic **mock** candidate
+> provider — the agent *reasons* (filters hard constraints, scores soft preferences, ranks); it does
+> not recite a hard-coded winner. Step **5** calls `search_routes` only, now through the A4 tool
+> seam (registry → executor → structured result): `search_routes` is `AVAILABLE` on **mock** data,
+> while the separate fare/delay/availability/booking tools are honest `NOT_IMPLEMENTED` stubs (B/C),
+> so the trace shows their status/source without fabricating numbers. Steps **11–12** (re-planning,
+> Travel Pass) are **not implemented** yet.
 
 ---
 
@@ -178,5 +182,6 @@ do **not** hard-code the "winner".
 - [ ] Mock/simulated data is clearly labeled; nothing presented as real-time.
 - [ ] Demo is repeatable (deterministic seed) and resilient (fallbacks ready).
 
-> **This is the target all workstreams build toward.** A3 delivers steps 1–10 over mock data; the
-> full demo (including steps 11–12) completes across A4–A9 + Workstreams B/C.
+> **This is the target all workstreams build toward.** A3 delivers steps 1–10 over mock data and A4
+> hardens the tool execution behind step 5; the full demo (including steps 11–12) completes across
+> A5–A9 + Workstreams B/C.

@@ -373,6 +373,13 @@ export default function App() {
                         {action.tool_call && (
                           <p className="agent-timeline__tool">
                             tool <span className="rw-mono">{action.tool_call.name}</span>
+                            {/* A4 (brief §17): show tool status + source safely; tokens only, no new UI. */}
+                            {action.tool_call.availability && (
+                              <span className="tag">{action.tool_call.availability}</span>
+                            )}
+                            {action.tool_call.data_source && (
+                              <span className="tag">{action.tool_call.data_source}</span>
+                            )}
                             {action.tool_call.result_summary
                               ? ` — ${action.tool_call.result_summary}`
                               : ''}

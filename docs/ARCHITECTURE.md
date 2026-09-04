@@ -5,18 +5,22 @@
 > frontend-only architecture note and covers the **whole system**: frontend → backend →
 > agent → tools → transit intelligence/ML → automation → data/external services.
 >
-> **Status:** **A1 (foundation), A2 (request understanding), and A3 (agent orchestration &
-> decision) are implemented.** A FastAPI backend (config, logging, CORS, `GET /health`,
-> structured errors) now runs a real agent layer: `POST /api/route/plan` extracts a validated
-> `TravelRequest` (A2 — Qwen or a deterministic mock), then `app/agent/` drives the canonical state
-> machine and `app/agent/decision.py` scores **mock** candidates from `app/tools/` (a deterministic
-> mock candidate provider + honest `not_implemented` tool stubs) into a recommendation,
-> alternatives, concise reasons, and an `agent_actions[]` trace. The React + Vite + TypeScript
-> frontend (app shell + a centralized `services/api` client) shows the parsed request, the
-> agent-progress timeline, and the mock decision, with the design tokens (`frontend/src/styles/`)
-> as the visual source of truth. Everything else here (real tools, ML, automation, execution, the
-> full component UI) remains the **agreed plan** for A4+. All route data is **mock**. Keep it
-> **suitable for a hackathon MVP** — simple, demonstrable, mock-backed.
+> **Status:** **A1 (foundation), A2 (request understanding), A3 (agent orchestration & decision),
+> and A4 (tool system & capability execution) are implemented.** A FastAPI backend (config, logging,
+> CORS, `GET /health`, structured errors) now runs a real agent layer: `POST /api/route/plan`
+> extracts a validated `TravelRequest` (A2 — Qwen or a deterministic mock), then `app/agent/` drives
+> the canonical state machine and `app/agent/decision.py` scores **mock** candidates from
+> `app/tools/` into a recommendation, alternatives, concise reasons, and an `agent_actions[]` trace.
+> **A4** turned `app/tools/` into a clean capability-execution system — a structured `ToolResult`,
+> Pydantic input validation, an explicit availability model, and a safe `ToolExecutor` (timeout +
+> exception/malformed guards) behind the registry — with `search_routes` `AVAILABLE` on a
+> deterministic mock provider and the fare/delay/availability/booking tools honest `NOT_IMPLEMENTED`
+> stubs. The React + Vite + TypeScript frontend (app shell + a centralized `services/api` client)
+> shows the parsed request, the agent-progress timeline (now with per-tool status/source), and the
+> mock decision, with the design tokens (`frontend/src/styles/`) as the visual source of truth.
+> Everything else here (real tools, ML, automation, execution, the full component UI) remains the
+> **agreed plan** for A5+. All route data is **mock**. Keep it **suitable for a hackathon MVP** —
+> simple, demonstrable, mock-backed.
 
 ---
 
@@ -196,8 +200,9 @@ recorded here and in `frontend/README.md`.
 
 **Workstream A owns the backend** (agent + API). Structure below — **A1 implemented the
 foundation files**, **A2 added request understanding** (`schemas/travel_request.py`,
-`services/ai/extraction.py`), and **A3 added the agent + tools** (`agent/`, `tools/`,
-`schemas/candidate.py`) (✅):
+`services/ai/extraction.py`), **A3 added the agent + tools** (`agent/`, `tools/`,
+`schemas/candidate.py`), and **A4 refined the tool seam into a capability-execution system**
+(`tools/base.py`, `tools/executor.py`, `tools/registry.py`) (✅):
 
 ```
 backend/
@@ -209,8 +214,8 @@ backend/
 │   ├── schemas/           # ✅ Pydantic models mirroring API_CONTRACTS.md (A2 travel_request.py · A3 candidate.py)
 │   ├── services/ai/       # ✅ AI abstraction (base · qwen_client · mock_client · factory) + A2 extraction.py
 │   ├── agent/             # ✅ A3: state.py (state machine + execution context) · decision.py (scoring) · orchestrator.py
-│   └── tools/             # ✅ A3: base.py (Tool ABC) · candidates.py (mock provider) · capabilities.py · registry.py (A→B/C seam)
-├── tests/                 # ✅ foundation + A2 extraction + A3 state/decision/agent/API tests
+│   └── tools/             # ✅ A3/A4: base.py (Tool ABC + ToolResult) · executor.py (A4 safe execution) · candidates.py (mock provider) · capabilities.py · registry.py (A→B/C seam)
+├── tests/                 # ✅ foundation + A2 extraction + A3 state/decision/agent/API + A4 tool contract/registry/execution/stub/integration tests
 ├── requirements.txt       # ✅ dependencies (requirements.txt chosen over pyproject.toml)
 ├── .env.example           # ✅ config template (never commit .env)
 └── README.md
@@ -237,17 +242,19 @@ loop is:
 UNDERSTAND → REASON → ACT → ADAPT → DELIVER
 ```
 
-Conceptual internal pipeline (built in phases A2–A7; **[Understanding] ✅ A2**, and
-**[Planning]/[Tool calling]/[Evaluation]/[Decision] ✅ A3 — deterministic, over mock data**):
+Conceptual internal pipeline (built in phases A2–A7; **[Understanding] ✅ A2**,
+**[Planning]/[Tool calling]/[Evaluation]/[Decision] ✅ A3 — deterministic, over mock data**, and
+**[Tool calling] hardened in ✅ A4 — registry → executor → structured `ToolResult`**):
 
 ```
 Travel request (text + structured fields)
    → [Understanding]  ✅ A2: parse → TravelRequest + constraints (hard/soft) + missing-info detection
    → [Planning]       ✅ A3: choose the candidate provider + scoring pass (deterministic, not an LLM)
-   → [Tool calling]   ✅ A3: search_routes (mock provider); fare/delay stubs → A4+
+   → [Tool calling]   ✅ A3/A4: registry → executor (validate + timeout + guards) → search_routes
+                        (mock provider, AVAILABLE); fare/delay/availability/booking = NOT_IMPLEMENTED
    → [Evaluation]     ✅ A3: filter hard constraints → score soft prefs → rank (agent/decision.py)
    → [Decision]       ✅ A3: recommendation + alternatives + concise reasons
-   → [Adaptation]     on disruption → REPLANNING loop back to searching (A4+)
+   → [Adaptation]     on disruption → REPLANNING loop back to searching (A5+)
    → [Delivery]       recommendation + explanation + agent_actions (+ Travel Pass data)
 ```
 

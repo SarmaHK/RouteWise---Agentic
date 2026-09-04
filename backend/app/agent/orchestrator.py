@@ -1,4 +1,4 @@
-"""Route agent orchestrator (Workstream A, Phase A3).
+"""Route agent orchestrator (Workstream A, Phase A3; tool execution refined in A4).
 
 :class:`RouteAgent` is the first real reasoning/orchestration layer. Given a validated
 :class:`~app.schemas.travel_request.TravelRequest` (A2 output) it drives the canonical state
@@ -16,10 +16,14 @@ Honesty guards (A3 brief §10/§17; AGENT_SPEC §15–§16):
   ``UNDERSTANDING`` (A3 brief §12) — no invented state, no fabricated route.
 * Every route figure comes from the mock candidate provider and is labelled ``data_source=mock``.
 * The agent never claims real seats/fares/availability; the fare/delay/availability/booking
-  tools are honest ``not_implemented`` stubs and are not called for data in A3.
+  tools are honest ``not_implemented`` stubs, gated by the A4 tool-availability model so they are
+  resolved but never called for data.
 
-Qwen is **not** used for route selection here (A3 brief §10); it remains the A2 extractor. Mock
-mode is fully functional with no API key.
+**A4** routes the ``search_routes`` call through the tool seam (registry → executor → structured
+:class:`~app.tools.base.ToolResult`): resolve → validate → execute → observe → decide. Invocation
+stays **orchestrator-controlled** — the multi-step Qwen tool-calling loop is **A5** (A4 brief §14).
+Qwen is **not** used for route selection here; it remains the A2 extractor. Mock mode is fully
+functional with no API key.
 """
 
 from __future__ import annotations
@@ -92,29 +96,42 @@ class RouteAgent:
             state=AgentState.PLANNING,
             label="Planned the approach",
             detail=(
-                "Will call search_routes(origin, destination) to gather mock candidates, then "
-                "filter hard constraints and score soft preferences. Fare/delay/availability/"
-                "booking tools are not implemented in Phase A3, so they are not called for data."
+                "Will resolve and call the search_routes tool (via the A4 tool seam: "
+                "validate → execute → structured result) to gather mock candidates, then filter "
+                "hard constraints and score soft preferences. Fare/delay/availability/booking "
+                "tools are not_implemented, so they are resolved but not called for data."
             ),
             data_source=DataSource.mock,
         )
 
-        # --- SEARCHING ----------------------------------------------------- #
+        # --- SEARCHING (A4 seam: resolve → validate → execute → structured result) --- #
         context.advance(AgentState.SEARCHING)
+        tool_name = "search_routes"
         search_args = {"origin": request.origin, "destination": request.destination}
-        result = self._tools.call("search_routes", **search_args)
-        candidates = list(result.data or [])
+        tool = self._tools.get(tool_name)  # 1–2. identify + resolve the capability
+        result = self._tools.execute(tool_name, search_args)  # 3–5. validate + execute
+        candidates = list(result.data or []) if result.success else []
         context.candidates = candidates
+        if not result.success:
+            # Honest + non-fatal: record the structured failure; EVALUATING then reports no route.
+            context.errors.append(result.message)
         context.record_action(
             state=AgentState.SEARCHING,
-            label="Searched for candidate routes",
+            label=(
+                "Searched for candidate routes"
+                if result.success
+                else "Route search returned no usable data"
+            ),
             detail=result.message,
             tool_call=ToolCall(
-                name="search_routes",
+                name=tool_name,
                 args=search_args,
-                status="done",
+                status="done" if result.success else "error",
                 result_summary=result.message,
+                availability=(tool.availability.value if tool else None),
+                data_source=result.data_source,
             ),
+            status="done" if result.success else "error",
             data_source=result.data_source,
         )
 

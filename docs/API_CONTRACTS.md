@@ -268,7 +268,9 @@ An ordered log the frontend renders via `AgentActivity`/`AgentStep`.
     "name": "search_routes",
     "args": { "origin": "Colombo Fort", "destination": "Ella" },
     "status": "done",
-    "result_summary": "3 candidate routes"
+    "result_summary": "3 candidate routes",
+    "availability": "available",
+    "data_source": "mock"
   },
   "timestamp": "2026-09-04T08:00:03Z",
   "status": "done"
@@ -280,7 +282,7 @@ An ordered log the frontend renders via `AgentActivity`/`AgentStep`.
 | `seq` | number | Order in the timeline. |
 | `state` | enum | Canonical Agent state. |
 | `label` / `detail` | string | Human-facing text. |
-| `tool_call` | object? | Present when this step called a tool (§6). `status`: `pending\|running\|done\|error`. |
+| `tool_call` | object? | Present when this step called a tool (§6). `status`: `pending\|running\|done\|error`. **A4 (additive):** `availability` (`available\|not_implemented\|disabled\|error`) and `data_source` (`mock\|simulated\|live`) — both optional, so the A3 shape is unchanged. |
 | `status` | enum | Step status: `pending \| active \| done \| error`. |
 | `timestamp` | string (ISO 8601) | When it happened. |
 
@@ -348,12 +350,24 @@ the **same signatures**. Do **not** implement real B/C functionality now.
   irreversible booking is a Workstream C concern gated by explicit confirmation
   (see [`AGENT_SPEC.md` §14](AGENT_SPEC.md)).
 - Tools return **structured** data (not prose) so the agent can reason/score over it.
+- **A4:** executable tools validate their input (Pydantic) before running; invalid input, unknown
+  tools, exceptions, timeouts, and malformed returns all become **structured failures** — never a
+  crash or a fabricated success.
 - Mocks live behind these interfaces; swapping in real implementations must not change the
   signature or the agent code that calls them.
 
-> Tool **implementations** (even mocks) are built in later phases (**A4 — Agent Tool System**,
-> **A5 — Tool-Calling Orchestrator**, **A7 — Mock Intelligence Integration**). This document
-> only fixes the **contract** so all workstreams agree.
+> **A4 — Tool System & Capability Execution is implemented.** The contract above is now backed by a
+> real tool seam in `backend/app/tools/`: `search_routes` is `AVAILABLE` (deterministic **mock**
+> data); `get_fare_estimate`, `get_delay_prediction`, `get_route_details`, `check_availability`, and
+> `prepare_booking` are honest **`NOT_IMPLEMENTED`** stubs (real versions arrive with B/C — **A7**).
+> The multi-step Qwen tool-calling orchestrator is **A5**.
+>
+> **Structured result (A4):** every tool call returns
+> `{ success, tool_name, data_source, data, error{code,message} | null }` (plus `status` / `message`
+> for the trace). **Availability (A4):** `AVAILABLE` / `NOT_IMPLEMENTED` / `DISABLED` / `ERROR` —
+> "the tool exists" is separate from "it can return data"; provenance stays on `data_source`. Error
+> codes: `INVALID_INPUT`, `UNKNOWN_TOOL`, `DUPLICATE_TOOL`, `NOT_IMPLEMENTED`, `TOOL_UNAVAILABLE`,
+> `EXECUTION_ERROR`, `TIMEOUT`, `MALFORMED_RESULT`. See [`AGENT_SPEC.md` §7](AGENT_SPEC.md).
 
 ---
 

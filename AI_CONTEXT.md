@@ -112,8 +112,8 @@ Workstream A proceeds through phases **A1 → A10**.
 ```
 A1 Project Foundation             ✅ implemented
 A2 Travel Request Understanding   ✅ implemented
-A3 Agent Architecture             ← current / orchestration + decision implemented
-A4 Agent Tool System
+A3 Agent Architecture             ✅ implemented / orchestration + decision
+A4 Agent Tool System              ← current / tool contract + registry + executor implemented
 A5 Tool-Calling Orchestrator
 A6 Route Decision Engine
 A7 Mock Intelligence Integration
@@ -122,14 +122,18 @@ A9 Final API & Agent State
 A10 Workstream B Handover
 ```
 
-**CURRENT PHASE: A3 — Agent Orchestration & Decision Engine.**
+**CURRENT PHASE: A4 — Tool System & Capability Execution.**
 
-Do **not** auto-advance into A4 or any later phase. Wait for an explicit human
-instruction. A3 adds the first real agent reasoning layer — a canonical state machine, an
-execution context, a tool/capability abstraction, a deterministic **mock** candidate provider,
-and a transparent decision engine — wired into `POST /api/route/plan`. All route data is
-**mock**. Do not start real Workstream B/C work (ML models, PostGIS, GTFS ingestion, browser
-automation, booking, Travel Pass generation) or the A4+ tool system — those are later phases.
+Do **not** auto-advance into A5 or any later phase. Wait for an explicit human
+instruction. A4 turns the A3 tool abstraction into a clean capability-execution system — a
+structured `ToolResult` (`success` / `tool_name` / `data_source` / `data` / `error`), Pydantic input
+validation, an explicit `AVAILABLE` / `NOT_IMPLEMENTED` / `DISABLED` / `ERROR` availability model, a
+duplicate-rejecting registry, and a safe `ToolExecutor` (availability gate + timeout +
+exception/malformed guards) — with `search_routes` `AVAILABLE` on the deterministic **mock** provider
+and the fare/delay/availability/booking tools honest `NOT_IMPLEMENTED` stubs. Tool invocation stays
+orchestrator-controlled. All route data is **mock**. Do not start real Workstream B/C work (ML
+models, PostGIS, GTFS ingestion, browser automation, booking, Travel Pass generation) or the A5+
+Qwen tool-calling loop — those are later phases.
 
 ---
 

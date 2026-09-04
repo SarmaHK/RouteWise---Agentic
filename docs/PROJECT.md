@@ -20,7 +20,7 @@
 | **Track** | Hospitality & Tourism |
 | **Team size** | 3 members (3 workstreams) |
 | **Reasoning engine** | Qwen (Alibaba Cloud Model Studio) |
-| **Implementation sequencing** | Workstream A built first (phases A1–A3 done); B & C documented, built to the same interfaces |
+| **Implementation sequencing** | Workstream A built first (phases A1–A4 done); B & C documented, built to the same interfaces |
 
 ---
 
@@ -240,13 +240,31 @@ Full definitions + scoring model: [`AGENT_SPEC.md` §8–10](AGENT_SPEC.md).
   - **Frontend:** an agent-progress timeline, the recommended route (marked **MOCK**), concise
     reasons, alternatives with trade-offs, and an honest no-route state — design tokens only.
   - **Scope:** mock data only; no execution/replanning, ML, database, GTFS, or Travel Pass (A4+).
-- **No route-planning features beyond A3's mock decision (by design).** No real tool calling,
+- **Phase A4 — Tool System & Capability Execution: COMPLETE.** The A3 tool seam is now a clean,
+  safe capability-execution system (`backend/app/tools/`):
+  - **Tool contract + structured result:** every tool declares its metadata + a Pydantic
+    `args_model` and returns a `ToolResult` (`success` / `tool_name` / `data_source` / `data` /
+    `error{code,message}`) — never an arbitrary dict.
+  - **Availability model:** `AVAILABLE` / `NOT_IMPLEMENTED` / `DISABLED` / `ERROR` separates "the
+    tool exists" from "it can return data"; provenance stays on `data_source`.
+  - **Registry + executor:** `ToolRegistry` (register/get/list/status/execute, rejects duplicates)
+    delegates to a `ToolExecutor` that gates availability, validates input, bounds execution with a
+    timeout, and turns any exception/malformed return into a structured failure — the agent never
+    crashes and a stub can never fabricate success.
+  - **Tools:** `search_routes` is `AVAILABLE` on the deterministic **mock** provider; the
+    fare/delay/route-details/availability/booking tools remain honest `NOT_IMPLEMENTED` stubs (B/C).
+  - **Agent + API:** the orchestrator routes `search_routes` through the seam (resolve → validate →
+    execute → structured result → decide); invocation stays orchestrator-controlled (the Qwen loop is
+    A5). `ToolCall` gained two **additive** fields (`availability`, `data_source`), shown as small
+    status/source tags in the existing timeline — no new UI, response contract otherwise unchanged.
+  - **Scope:** no real B/C providers, no A5 Qwen tool-calling loop; all data still **mock**.
+- **No route-planning features beyond A4's mock decision (by design).** No real tool-calling loop,
   execution/booking, disruption replanning, ML, database, GTFS, automation, or Travel Pass are
-  built yet — those belong to A4+ / Workstream B / Workstream C. All A3 route data is **mock**.
+  built yet — those belong to A5+ / Workstream B / Workstream C. All A4 route data is **mock**.
 - **Honesty:** real Qwen connectivity is **not** claimed unless a key is configured; with no key the
   backend uses the mock extractor/client (see [`AGENT_SPEC.md` §15](AGENT_SPEC.md)).
-- **Next (when instructed):** Workstream A phase **A4 — Agent Tool System** (real tool definitions +
-  mock implementations); B and C proceed against the agreed interfaces.
+- **Next (when instructed):** Workstream A phase **A5 — Tool-Calling Orchestrator** (the multi-step
+  Qwen decide → call → observe loop); B and C proceed against the agreed interfaces.
 
 ---
 
@@ -257,7 +275,7 @@ Full definitions + scoring model: [`AGENT_SPEC.md` §8–10](AGENT_SPEC.md).
 | **A1** | **Project Foundation** ✅ | Docs, design system, tokens, architecture, contracts **+ a working foundation scaffold (FastAPI app + React shell + AI-service abstraction + tests)**. |
 | **A2** | **Travel Request Understanding** ✅ | NLU: request → validated `TravelRequest` + constraints (extraction only; no route planning). |
 | **A3** | **Agent Architecture** ✅ | Agent state model + execution context, orchestration, deterministic decision/scoring over mock candidates. |
-| A4 | Agent Tool System | Tool definitions + mock implementations. |
+| **A4** | **Agent Tool System** ✅ | Tool contract + structured result, availability model, registry + safe executor; `search_routes` (mock) available, other capabilities honest `NOT_IMPLEMENTED` stubs. |
 | A5 | Tool-Calling Orchestrator | Qwen tool-calling loop (decide → call → observe). |
 | A6 | Route Decision Engine | Candidate evaluation, scoring, selection, explanation. |
 | A7 | Mock Intelligence Integration | Wire in mock fares/delays (B boundary). |
