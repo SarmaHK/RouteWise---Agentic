@@ -85,8 +85,10 @@ export interface TravelRequest {
  *
  * A4 adds two additive, optional fields so the timeline can show tool-execution status safely
  * (A4 brief §15/§17): `availability` (the resolved tool's capability state) and `data_source`
- * (this call's provenance). Both may be absent on older responses — the UI renders them only when
- * present, so the A3 contract is preserved.
+ * (this call's provenance). A5 adds one more additive, optional field, `error_code` — the
+ * structured failure code when a call did not succeed (A5 brief §10) — so the multi-step trace can
+ * show *why* a tool call failed. All may be absent on older responses — the UI renders them only
+ * when present, so the A3/A4 contract is preserved.
  */
 export interface ToolCall {
   name: string;
@@ -97,6 +99,8 @@ export interface ToolCall {
   availability?: string | null;
   /** Provenance of this tool call's output (A4). */
   data_source?: DataSource | null;
+  /** Structured failure code when the call did not succeed (A5): e.g. NOT_IMPLEMENTED. */
+  error_code?: string | null;
 }
 
 /** One entry of the agent-activity log (API_CONTRACTS §4). */

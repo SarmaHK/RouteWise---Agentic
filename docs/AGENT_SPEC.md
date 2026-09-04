@@ -21,9 +21,13 @@
 > (§7): a structured `ToolResult`, Pydantic input validation, an explicit availability model, and a
 > safe `ToolExecutor` (timeout + exception/malformed guards) behind the registry — still
 > orchestrator-controlled and still **mock** (only `search_routes` returns data; the rest are honest
-> `NOT_IMPLEMENTED` stubs). The remaining agent behavior (the multi-step Qwen tool-calling loop,
-> replanning, execution, real B/C intelligence) is built in **A5–A7**. Do not implement later-phase
-> agent logic during A4.
+> `NOT_IMPLEMENTED` stubs). **A5 turns that seam into an autonomous, bounded multi-step Qwen
+> tool-calling loop**: the model **selects** which available tool to call next, the app validates +
+> executes it through the registry/executor and feeds the structured result back, repeating until a
+> final answer or the `MAX_AGENT_ITERATIONS` limit (default **8**); the decision stays **grounded** in
+> the A3 engine (no fabrication). Still **mock** (only `search_routes` returns data; the rest are
+> honest `NOT_IMPLEMENTED` stubs). The remaining agent behavior (replanning, execution, real B/C
+> intelligence) is built in **A6–A7**. Do not implement later-phase agent logic during A5.
 
 ---
 
@@ -94,7 +98,7 @@ These nine states are the **only** valid agent states. They drive the UI
 | **PLANNING** | Deciding approach and which tools to call (**A3 ✅**). | "Planning your journey…" | `--state-planning` (info) |
 | **SEARCHING** | Querying routes / transit intelligence (tools running) (**A3 ✅** — mock `search_routes`). | "Searching routes & checking conditions…" | `--state-searching` (primary) |
 | **EVALUATING** | Comparing candidates; scoring vs constraints/preferences (**A3 ✅** — deterministic engine; this is the brief's conceptual **DECIDING** step, the EVALUATING→COMPLETED boundary). | "Comparing N routes…" | `--state-evaluating` (secondary) |
-| **EXECUTING** | Performing actions (availability, booking prep) — simulated in MVP. | "Taking actions…" | `--state-executing` (primary) |
+| **EXECUTING** | Performing actions (availability, booking prep) — simulated in MVP (**A5 ✅** — entered when the model selects an action tool such as `prepare_booking`; still `NOT_IMPLEMENTED`/simulated). | "Taking actions…" | `--state-executing` (primary) |
 | **REPLANNING** | Conditions changed; recomputing the route. | "Re-planning due to a delay…" | `--state-replanning` (warning) |
 | **COMPLETED** | A final recommendation + explanation is ready (**A3 ✅**). | "Here's your best route." | `--state-completed` (success) |
 | **ERROR** | Something failed; cannot complete without retry/intervention. | "Something went wrong — try again." | `--state-error` (error) |
@@ -126,6 +130,15 @@ Rules:
   Conceptual **NEEDS_CLARIFICATION** is **not** a new state either: the agent **stays in
   UNDERSTANDING**, returns the A2 `clarification_required` flag + questions, and stops before
   PLANNING. Invalid transitions raise an explicit error — they are never silently coerced.
+- **A5 implemented path:** the PLANNING → SEARCHING block is now a **model-driven loop**. Each
+  Qwen-selected tool call is represented as an **agent action/event** under the existing states —
+  there is **no new `TOOL_CALLING` state**. Read tools run in **SEARCHING**; an action tool (e.g.
+  `prepare_booking`) advances to **EXECUTING**; and the loop may revisit **SEARCHING** (A5 added the
+  value-only edges `SEARCHING → EXECUTING` and `EXECUTING → SEARCHING`/`EVALUATING` to the A3
+  transition table). The illustrative multi-step flow `UNDERSTANDING → PLANNING → SEARCHING →
+  EXECUTING → SEARCHING → EXECUTING → EVALUATING → COMPLETED` is therefore reachable. A transition
+  that is not canonical is guarded by `can_advance` and falls back to **SEARCHING** rather than
+  raising — invalid transitions are still never silently coerced into an illegal state.
 
 ### How states drive the UI
 
@@ -193,8 +206,14 @@ Rules:
     set — `data_source: mock`, `status: mock_data`). `get_fare_estimate`, `get_delay_prediction`,
     `get_route_details`, `check_availability`, and `prepare_booking` are honest **`NOT_IMPLEMENTED`**
     stubs (owned by B/C); the executor's gate means they can **never** fabricate a success (§16).
-  - Invocation stays **orchestrator-controlled** in A4; the multi-step **Qwen** tool-calling loop is
-    **A5**.
+  - **A5 status — the multi-step Qwen tool-calling loop.** Invocation is now **model-driven** but
+    still safe: the orchestrator exposes only `AVAILABLE` tools as function definitions, Qwen
+    **selects** the next call, and every call is validated + executed **only** through the A4
+    registry → executor (an unknown/unavailable tool or invalid args is a structured failure, never
+    arbitrary execution). Each structured `ToolResult` (success **or** failure) is appended to the
+    transcript and fed back to the model verbatim. The loop is **bounded** by `MAX_AGENT_ITERATIONS`
+    (default **8**) plus a duplicate-call guard; on the limit it stops, preserves the observed
+    actions, and fabricates no recommendation.
 
 ---
 
@@ -397,7 +416,13 @@ abstraction into a clean capability-execution system (§7): a structured `ToolRe
 validation, an explicit `AVAILABLE`/`NOT_IMPLEMENTED`/`DISABLED`/`ERROR` availability model, a
 duplicate-rejecting registry, and a safe `ToolExecutor` (availability gate + timeout +
 exception/malformed guards) — still orchestrator-controlled, still **mock**, with the future B/C
-capabilities left as honest `NOT_IMPLEMENTED` stubs. The rest of the agent (the multi-step Qwen
-tool-calling loop, replanning, execution, real B/C intelligence) is built in **A5–A7**. During
-**A4**, do **not** implement later-phase agent logic or real Workstream B/C functionality — only
-keep this spec consistent so all future work aligns.
+capabilities left as honest `NOT_IMPLEMENTED` stubs. **A5 — Tool-Calling Orchestrator** adds the
+autonomous, **bounded multi-step Qwen tool-calling loop** on top of that seam (§7): the model selects
+which available tool to call, the app validates/executes it and feeds the structured result back, and
+the loop repeats until a final answer or the iteration limit — with duplicate-call protection, a
+`can_advance`-guarded state machine (**no** new `TOOL_CALLING` state), and a decision **grounded** in
+the A3 engine over tool-gathered candidates (never fabricated; the limit stops with no recommendation).
+Real Qwen is used when `MODEL_STUDIO_API_KEY` is present; otherwise a deterministic **mock** planner
+drives the same loop (`data_source: mock`). The rest of the agent (replanning, execution, real B/C
+intelligence) is built in **A6–A7**. During **A5**, do **not** implement later-phase agent logic or
+real Workstream B/C functionality — only keep this spec consistent so all future work aligns.

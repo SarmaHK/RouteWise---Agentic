@@ -26,12 +26,12 @@ used throughout, so no reader mistakes a plan for a built feature:
 | `TravelRequest` normalized-request shape (§2.1) | CURRENT (implemented) | A — A2 |
 | `GET /health` liveness probe (§2) | CURRENT (implemented) | A — A1 |
 | Route / leg / recommendation shapes (§3) | CURRENT (mock) | A → B (real data) |
-| `agent_actions[]` shape (§4) | CURRENT | A |
+| `agent_actions[]` shape (§4) | CURRENT (A4 `availability`/`data_source`; **A5 `error_code`** — all additive) | A |
 | Error envelope (§5) | CURRENT | A |
 | `search_routes`, `get_fare_estimate`, `get_delay_prediction`, `get_route_details` (§6) | CURRENT signature / FUTURE impl | B |
 | `check_availability`, `prepare_booking` (§6) | CURRENT signature / FUTURE impl | C |
-| Delivery mechanism: single response vs SSE/WebSocket (§4) | FUTURE (undecided) | A — decided A5/A8/A9 |
-| `GET /api/agent/status`, `GET /api/agent/stream` (§7) | FUTURE (reserved) | A — decided A5/A8/A9 |
+| Delivery mechanism: single response vs SSE/WebSocket (§4) | CURRENT (single response — **A5** runs the whole loop in-request, no streaming); SSE/WebSocket FUTURE | A — streaming decided A8/A9 |
+| `GET /api/agent/status`, `GET /api/agent/stream` (§7) | FUTURE (reserved) | A — decided A8/A9 |
 | Live GTFS/GTFS-RT, PostGIS, real ML, real booking, cloud deploy | FUTURE | B / C |
 
 > **Rule:** a FUTURE item must never be presented as CURRENT in code, UI, or the demo. Mocks
@@ -73,7 +73,13 @@ Submit a travel request; receive the agent's plan/recommendation.
   `search_routes` tool, and a **deterministic decision engine** returns a `recommendation`,
   `alternatives`, the full `agent_actions[]` trace, and a concise `reasoning` — all
   `data_source: mock`. If a hard constraint is missing the agent **stops before deciding** and
-  returns `status: UNDERSTANDING` with the clarification (A2 behaviour preserved). Real transit
+  returns `status: UNDERSTANDING` with the clarification (A2 behaviour preserved). **A5 makes the
+  tool sequence model-driven** without changing this contract: the agent now runs a **bounded
+  multi-step Qwen tool-calling loop** (Qwen selects each tool; the app validates + executes it via the
+  A4 seam and feeds the structured result back), so `agent_actions[]` may contain **multiple**
+  model-selected tool calls. The loop completes **inside the request** (no SSE/WebSocket, §4) and
+  stops safely at `MAX_AGENT_ITERATIONS` (default 8) — on the limit it returns `status: COMPLETED`
+  with `recommendation: null` and an honest `reasoning`, never a fabricated pick. Real transit
   search / ML scoring remains FUTURE (Workstream B, surfaced in A9).
 
 #### Request (conceptual)
@@ -282,7 +288,7 @@ An ordered log the frontend renders via `AgentActivity`/`AgentStep`.
 | `seq` | number | Order in the timeline. |
 | `state` | enum | Canonical Agent state. |
 | `label` / `detail` | string | Human-facing text. |
-| `tool_call` | object? | Present when this step called a tool (§6). `status`: `pending\|running\|done\|error`. **A4 (additive):** `availability` (`available\|not_implemented\|disabled\|error`) and `data_source` (`mock\|simulated\|live`) — both optional, so the A3 shape is unchanged. |
+| `tool_call` | object? | Present when this step called a tool (§6). `status`: `pending\|running\|done\|error`. **A4 (additive):** `availability` (`available\|not_implemented\|disabled\|error`) and `data_source` (`mock\|simulated\|live`) — both optional, so the A3 shape is unchanged. **A5 (additive):** `error_code` (string?, e.g. `INVALID_INPUT` / `UNKNOWN_TOOL` / `NOT_IMPLEMENTED` / `REPEATED_CALL`) — present only when a call failed or was suppressed, so the A4 shape is unchanged; `args` are **sanitized** (secret-like keys redacted, over-long strings truncated) and never expose chain-of-thought. |
 | `status` | enum | Step status: `pending \| active \| done \| error`. |
 | `timestamp` | string (ISO 8601) | When it happened. |
 
@@ -404,6 +410,13 @@ This document is the contract. Once the frontend or backend consumes a shape:
   - **A3 (agent decision):** added `PlanResponse.reasoning` (optional string) and
     `Recommendation.reasons` (optional string[]). Both are additive — the A2 request contract and
     every pre-existing response field are unchanged, so no consumer breaks.
+  - **A4 (tool seam):** added `ToolCall.availability` and `ToolCall.data_source` (both optional) to
+    the `agent_actions[].tool_call` shape — additive; the A3 shape is unchanged.
+  - **A5 (tool-calling loop):** added `ToolCall.error_code` (optional string) to the same shape —
+    additive; the A4 shape is unchanged. No request/response field was removed or retyped and the
+    `POST /api/route/plan` path is unchanged, so no consumer breaks. The only behavioral change is
+    that `agent_actions[]` may now contain **multiple** model-selected tool calls (it was already an
+    ordered array).
 - **Breaking** changes require a proposal + version bump (§1.6) and updates to consumers.
 - Never change a contract silently in code without updating this file in the same change.
 

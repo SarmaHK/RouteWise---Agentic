@@ -20,7 +20,7 @@
 | **Track** | Hospitality & Tourism |
 | **Team size** | 3 members (3 workstreams) |
 | **Reasoning engine** | Qwen (Alibaba Cloud Model Studio) |
-| **Implementation sequencing** | Workstream A built first (phases A1–A4 done); B & C documented, built to the same interfaces |
+| **Implementation sequencing** | Workstream A built first (phases A1–A5 done); B & C documented, built to the same interfaces |
 
 ---
 
@@ -257,14 +257,38 @@ Full definitions + scoring model: [`AGENT_SPEC.md` §8–10](AGENT_SPEC.md).
     execute → structured result → decide); invocation stays orchestrator-controlled (the Qwen loop is
     A5). `ToolCall` gained two **additive** fields (`availability`, `data_source`), shown as small
     status/source tags in the existing timeline — no new UI, response contract otherwise unchanged.
-  - **Scope:** no real B/C providers, no A5 Qwen tool-calling loop; all data still **mock**.
-- **No route-planning features beyond A4's mock decision (by design).** No real tool-calling loop,
+  - **Scope:** no real B/C providers; all data still **mock** (the Qwen tool-calling loop is A5, below).
+- **Phase A5 — Tool-Calling Orchestrator: COMPLETE.** `POST /api/route/plan` now runs an autonomous,
+  **bounded multi-step Qwen tool-calling loop** on the A4 tool seam:
+  - **Qwen tool-calling adapter** (`services/ai/agent.py`): exposes only `AVAILABLE` tools as function
+    definitions, parses/validates the model's `tool_calls`, and works with **real Qwen** (when
+    `MODEL_STUDIO_API_KEY` is set) or a **deterministic mock** planner (no key) — reusing the existing
+    AI abstraction (no second Qwen client).
+  - **Multi-step loop** (`agent/orchestrator.py`): the model **selects** each tool (the sequence is not
+    hard-coded); the app validates + executes it through the A4 `ToolRegistry` → `ToolExecutor` and
+    feeds the structured `ToolResult` (success **or** failure) back, repeating until a final answer.
+  - **Safety bounds:** `MAX_AGENT_ITERATIONS` (configurable, default **8**) stops a runaway loop and
+    preserves the observed actions; duplicate/loop detection suppresses repeated identical calls; tool
+    calls are represented as agent actions under the **existing 9 states** (no new `TOOL_CALLING`
+    state), with a `can_advance` guard for non-canonical transitions.
+  - **Grounded decision:** the final recommendation is computed by the A3 `DecisionEngine` over the
+    tool-gathered **mock** candidates — Qwen never invents candidate facts, and on the iteration limit
+    the agent returns no recommendation rather than fabricating one.
+  - **API + frontend:** the endpoint contract is preserved; the only change is the **additive**
+    `ToolCall.error_code`, surfaced as a small tag in the existing timeline. The whole loop runs
+    **in-request** (no streaming/SSE/WebSocket).
+  - **Scope:** no real B/C providers, no replanning/execution; all route data still **mock**. Real
+    Qwen tool-calling is **MOCK ONLY / NOT VERIFIED** here (no API key in this environment; the two
+    live tests skip honestly).
+- **No route-planning features beyond A5's model-driven mock decision (by design).** No
   execution/booking, disruption replanning, ML, database, GTFS, automation, or Travel Pass are
-  built yet — those belong to A5+ / Workstream B / Workstream C. All A4 route data is **mock**.
+  built yet — those belong to A6+ / Workstream B / Workstream C. All A5 route data is **mock**.
 - **Honesty:** real Qwen connectivity is **not** claimed unless a key is configured; with no key the
-  backend uses the mock extractor/client (see [`AGENT_SPEC.md` §15](AGENT_SPEC.md)).
-- **Next (when instructed):** Workstream A phase **A5 — Tool-Calling Orchestrator** (the multi-step
-  Qwen decide → call → observe loop); B and C proceed against the agreed interfaces.
+  backend uses the mock extractor/client **and the mock tool-calling planner** (see
+  [`AGENT_SPEC.md` §15](AGENT_SPEC.md)).
+- **Next (when instructed):** Workstream A phase **A6 — Route Decision Engine** (refine candidate
+  evaluation/scoring/selection/explanation, optionally against real B data); B and C proceed against
+  the agreed interfaces.
 
 ---
 
@@ -276,7 +300,7 @@ Full definitions + scoring model: [`AGENT_SPEC.md` §8–10](AGENT_SPEC.md).
 | **A2** | **Travel Request Understanding** ✅ | NLU: request → validated `TravelRequest` + constraints (extraction only; no route planning). |
 | **A3** | **Agent Architecture** ✅ | Agent state model + execution context, orchestration, deterministic decision/scoring over mock candidates. |
 | **A4** | **Agent Tool System** ✅ | Tool contract + structured result, availability model, registry + safe executor; `search_routes` (mock) available, other capabilities honest `NOT_IMPLEMENTED` stubs. |
-| A5 | Tool-Calling Orchestrator | Qwen tool-calling loop (decide → call → observe). |
+| **A5** | **Tool-Calling Orchestrator** ✅ | Bounded multi-step Qwen tool-calling loop (decide → call → observe): adapter (real + deterministic mock), iteration limit + duplicate/loop detection, decision grounded in the A3 engine. |
 | A6 | Route Decision Engine | Candidate evaluation, scoring, selection, explanation. |
 | A7 | Mock Intelligence Integration | Wire in mock fares/delays (B boundary). |
 | A8 | Agent Experience / UI | Agent-activity UI, route presentation. |

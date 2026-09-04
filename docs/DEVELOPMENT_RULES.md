@@ -88,9 +88,10 @@ If you (with approval) change architecture, contracts, components, or the design
 update the corresponding doc **in the same change**. Docs must never drift from reality.
 
 ### 18. Do not implement future phases unless explicitly instructed.
-Stay in the **current phase** (see [`PROJECT.md` §13–14](PROJECT.md)). Don't auto-advance. Don't
-start Qwen tool-calling, orchestration, ML, PostGIS, GTFS, automation, booking, or Travel Pass
-generation unless told to.
+Stay in the **current phase** (see [`PROJECT.md` §13–14](PROJECT.md)). Don't auto-advance. The A5
+bounded multi-step **Qwen tool-calling loop** is now built on the A4 tool seam; don't start A6+
+decision-engine refinement, ML, PostGIS, GTFS, automation, booking, or Travel Pass generation unless
+told to.
 
 ### 19. Do not claim functionality works unless verified.
 Honest reporting only. Distinguish "implemented and tested" from "written but not run" from
@@ -109,7 +110,7 @@ thing that works cleanly and is documented — not a speculative framework.
   ([`WORKSTREAMS.md`](WORKSTREAMS.md)) — this is **not** an A-only project.
 - **Implementation is sequenced A-first.** The active build workstream is **A — AI Agent &
   Decision Engine**; B and C are built later by their owners **to the same interfaces**.
-- **Current phase: A4 — Tool System & Capability Execution.** Do not auto-continue into A5.
+- **Current phase: A5 — Tool-Calling Orchestrator.** Do not auto-continue into A6.
 - You may create **clean interfaces / mocks / contracts** where a workstream needs a boundary —
   but **no real B/C functionality** until that workstream is explicitly started.
 

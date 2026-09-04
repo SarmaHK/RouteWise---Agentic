@@ -37,6 +37,12 @@ class Settings(BaseSettings):
     )
     model_name: str = "qwen-max"
 
+    # --- Agent loop (Workstream A, A5) ---
+    # Upper bound on autonomous tool-calling turns for one request (A5 brief §8). Configurable
+    # via env ``MAX_AGENT_ITERATIONS``; a small hackathon-friendly default guarantees the agent
+    # loop always terminates (no runaway/infinite tool calling, no background job system).
+    max_agent_iterations: int = 8
+
     # --- Database (Workstream B; declared for future, unused in A1) ---
     database_url: str = ""
 
@@ -57,6 +63,7 @@ class Settings(BaseSettings):
             "model_name": self.model_name,
             "model_studio_base_url": self.model_studio_base_url,
             "ai_enabled": self.ai_enabled,
+            "max_agent_iterations": self.max_agent_iterations,
             "database_configured": bool(self.database_url.strip()),
         }
 

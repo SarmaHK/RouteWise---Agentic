@@ -19,8 +19,29 @@ Phase A2 adds travel-request extraction on top of the same abstraction::
     TravelRequestExtractor                       (interface)
     QwenTravelRequestExtractor, MockTravelRequestExtractor
     MalformedExtractionError                     (safe rejection of bad model output)
+
+Phase A5 adds the Qwen tool-calling adapter + agent planner on the same abstraction (the model
+decides *which* registered tool to call next; the agent loop in ``app.agent`` executes it)::
+
+    get_planner()                 -> AgentPlanner (cached accessor)
+    build_planner(settings)       -> AgentPlanner (explicit, test-friendly)
+    AgentPlanner                                 (interface)
+    QwenAgentPlanner, MockAgentPlanner
+    AgentDecision, ToolCallRequest, PlannerContext
+    build_tool_definitions                       (available tools -> model function schemas)
 """
 
+from app.services.ai.agent import (
+    AgentDecision,
+    AgentPlanner,
+    MockAgentPlanner,
+    PlannerContext,
+    QwenAgentPlanner,
+    ToolCallRequest,
+    build_planner,
+    build_tool_definitions,
+    get_planner,
+)
 from app.services.ai.base import AIResponse, AIClient, ConnectivityResult
 from app.services.ai.extraction import (
     MalformedExtractionError,
@@ -48,4 +69,13 @@ __all__ = [
     "TravelRequestExtractor",
     "build_extractor",
     "get_extractor",
+    "AgentDecision",
+    "AgentPlanner",
+    "MockAgentPlanner",
+    "PlannerContext",
+    "QwenAgentPlanner",
+    "ToolCallRequest",
+    "build_planner",
+    "build_tool_definitions",
+    "get_planner",
 ]

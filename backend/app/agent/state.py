@@ -12,6 +12,11 @@ State discipline (AGENT_SPEC §5 — "do not invent new ones"):
   ``UNDERSTANDING`` and returns the A2 ``clarification_required`` flags (AGENT_SPEC §18).
 * The A3 happy path is ``UNDERSTANDING → PLANNING → SEARCHING → EVALUATING → COMPLETED``. No
   ``EXECUTING`` (A3 takes no actions) and no ``REPLANNING`` (no disruptions in A3).
+* **A5** drives tool selection from the Qwen/mock planner in a bounded loop. The canonical states
+  are unchanged, but the loop may traverse ``SEARCHING ↔ EXECUTING`` when the agent gathers info
+  and then acts (A5 brief §9's illustrative ``SEARCHING → EXECUTING → SEARCHING`` flow), so those
+  transitions — plus ``EXECUTING → EVALUATING`` — are permitted below. The golden single-search
+  path still visits exactly ``UNDERSTANDING → PLANNING → SEARCHING → EVALUATING → COMPLETED``.
 * Invalid transitions raise :class:`InvalidTransitionError` rather than being silently applied
   (A3 brief §4: "invalid transitions prevented/handled explicitly").
 """
@@ -35,7 +40,9 @@ from app.schemas.route import (
 from app.schemas.travel_request import TravelRequest
 
 # Forward flow from AGENT_SPEC §5, plus: ERROR reachable from any state; COMPLETED may restart
-# (new request) or re-plan; ERROR may recover to IDLE/UNDERSTANDING/SEARCHING.
+# (new request) or re-plan; ERROR may recover to IDLE/UNDERSTANDING/SEARCHING. A5 adds the
+# SEARCHING ↔ EXECUTING ↔ EVALUATING edges the bounded multi-step tool loop needs (brief §9);
+# no new states are introduced and the canonical forward happy path is unchanged.
 ALLOWED_TRANSITIONS: dict[AgentState, set[AgentState]] = {
     AgentState.IDLE: {AgentState.UNDERSTANDING, AgentState.ERROR},
     AgentState.UNDERSTANDING: {
@@ -48,7 +55,11 @@ ALLOWED_TRANSITIONS: dict[AgentState, set[AgentState]] = {
         AgentState.EVALUATING,
         AgentState.ERROR,
     },
-    AgentState.SEARCHING: {AgentState.EVALUATING, AgentState.ERROR},
+    AgentState.SEARCHING: {
+        AgentState.EVALUATING,
+        AgentState.EXECUTING,  # A5: gather → act within the multi-step loop
+        AgentState.ERROR,
+    },
     AgentState.EVALUATING: {
         AgentState.COMPLETED,
         AgentState.EXECUTING,
@@ -58,6 +69,8 @@ ALLOWED_TRANSITIONS: dict[AgentState, set[AgentState]] = {
     AgentState.EXECUTING: {
         AgentState.COMPLETED,
         AgentState.REPLANNING,
+        AgentState.SEARCHING,  # A5: act → gather more info
+        AgentState.EVALUATING,  # A5: act → evaluate whether enough is known
         AgentState.ERROR,
     },
     AgentState.REPLANNING: {

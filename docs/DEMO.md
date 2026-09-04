@@ -8,10 +8,12 @@
 > **Status:** demo **plan** + partial implementation. This document defines what the demo must show
 > so all three workstreams build toward one coherent story. **A3 demonstrates steps 1–10 of the
 > §3 walkthrough over mock data** (request → understanding → planning → mock search → evaluation →
-> decision → explanation → alternatives, with a MOCK tag), and **A4 hardens the tool seam behind
-> step 5** (a real registry + executor; the tool trace now shows each tool's availability + data
-> source). **Step 11 (disruption/re-planning) and step 12 (Travel Pass) are not built** (A5+ /
-> Workstream C). All route data is **mock**.
+> decision → explanation → alternatives, with a MOCK tag), **A4 hardens the tool seam behind step 5**
+> (a real registry + executor; the tool trace shows each tool's availability + data source), and **A5
+> makes step 5 autonomous + multi-step** (Qwen *selects* each tool call in a bounded loop; the trace
+> can now show several model-chosen calls, each with its status/source and any `error_code`). **Step
+> 11 (disruption/re-planning) and step 12 (Travel Pass) are not built** (A6+ / Workstream C). All
+> route data is **mock**.
 
 ---
 
@@ -52,7 +54,7 @@ The demo must prove the Agent can **reason**, not recite:
 | 2 | **Agent understanding** | Activity rail lights up: "Understanding your request…" | UNDERSTANDING | `AgentActivity`, `AgentStatus` |
 | 3 | **Constraint extraction** | Extracted constraints appear as chips: Colombo Fort → Ella, budget LKR 2,000, heavy bag, minimal walking. | UNDERSTANDING | constraint chips |
 | 4 | **Planning** | "Planning your journey…" — agent outlines which tools it will call. | PLANNING | `AgentStep` |
-| 5 | **Tool calls** | Expandable **mono** tool traces: `search_routes(...)`, `get_fare_estimate(...)`, `get_delay_prediction(...)`. | SEARCHING | `AgentStep` (tool trace) |
+| 5 | **Tool calls** | Expandable **mono** tool traces — **A5:** the sequence is **model-selected** (Qwen picks each call in a bounded loop), e.g. `search_routes(...)`, then optionally `get_fare_estimate(...)`/`get_delay_prediction(...)` (currently honest `NOT_IMPLEMENTED` stubs). | SEARCHING (→ EXECUTING for an action tool) | `AgentStep` (tool trace) |
 | 6 | **Transit intelligence** | Candidate routes stream in with fares + delay risk (labeled **simulated**). | SEARCHING | `RouteCard`s |
 | 7 | **Route evaluation** | "Comparing 3 routes…" — scores/trade-offs shown; over-budget routes filtered out. | EVALUATING | `RouteCard`, `FareDisplay`, `DelayBadge` |
 | 8 | **Decision** | Recommended route highlighted (primary accent + "Recommended"). | EVALUATING → EXECUTING | `RouteCard` (recommended) |
@@ -65,13 +67,16 @@ The demo must prove the Agent can **reason**, not recite:
 > pass delivery) touch **Workstream C**. In the demo they are backed by **mocks/simulation**
 > behind the real interfaces (see [`WORKSTREAMS.md`](WORKSTREAMS.md)).
 >
-> **A3/A4 coverage:** steps **1–10** run end-to-end over the deterministic **mock** candidate
+> **A3/A4/A5 coverage:** steps **1–10** run end-to-end over the deterministic **mock** candidate
 > provider — the agent *reasons* (filters hard constraints, scores soft preferences, ranks); it does
-> not recite a hard-coded winner. Step **5** calls `search_routes` only, now through the A4 tool
-> seam (registry → executor → structured result): `search_routes` is `AVAILABLE` on **mock** data,
-> while the separate fare/delay/availability/booking tools are honest `NOT_IMPLEMENTED` stubs (B/C),
-> so the trace shows their status/source without fabricating numbers. Steps **11–12** (re-planning,
-> Travel Pass) are **not implemented** yet.
+> not recite a hard-coded winner. Step **5** is now a **bounded multi-step Qwen loop** (A5): the model
+> *selects* each tool call, which runs through the A4 seam (registry → executor → structured result).
+> In practice the **mock** planner (no API key) picks `search_routes` once then finalizes;
+> `search_routes` is `AVAILABLE` on **mock** data, while the fare/delay/availability/booking tools are
+> honest `NOT_IMPLEMENTED` stubs (B/C), so if the model calls them the trace shows their status/source
+> (and `error_code`) without fabricating numbers. The loop is capped at `MAX_AGENT_ITERATIONS`
+> (default 8) and never invents a recommendation on the limit. Steps **11–12** (re-planning, Travel
+> Pass) are **not implemented** yet.
 
 ---
 
@@ -182,6 +187,6 @@ do **not** hard-code the "winner".
 - [ ] Mock/simulated data is clearly labeled; nothing presented as real-time.
 - [ ] Demo is repeatable (deterministic seed) and resilient (fallbacks ready).
 
-> **This is the target all workstreams build toward.** A3 delivers steps 1–10 over mock data and A4
-> hardens the tool execution behind step 5; the full demo (including steps 11–12) completes across
-> A5–A9 + Workstreams B/C.
+> **This is the target all workstreams build toward.** A3 delivers steps 1–10 over mock data, A4
+> hardens the tool execution behind step 5, and A5 makes that step an autonomous multi-step Qwen loop;
+> the full demo (including steps 11–12) completes across A6–A9 + Workstreams B/C.

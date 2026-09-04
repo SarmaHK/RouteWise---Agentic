@@ -1,15 +1,22 @@
-"""Route-planning endpoint (Workstream A, Phase A3 — Agent Orchestration & Decision).
+"""Route-planning endpoint (Workstream A; A3 orchestration, A5 multi-step tool loop).
 
-``POST /api/route/plan`` is the reserved primary endpoint (docs/API_CONTRACTS.md §2). The A3
+``POST /api/route/plan`` is the reserved primary endpoint (docs/API_CONTRACTS.md §2). The
 pipeline is: A2 extraction → clarification gate → agent orchestration → candidate evaluation →
 decision → ``PlanResponse`` (A3 brief §12). The **request contract is unchanged from A2**; the
-response now carries a decision (status ``COMPLETED``, a recommendation, alternatives, and the
-full agent-action trace) whenever the request can be planned.
+response carries a decision (status ``COMPLETED``, a recommendation, alternatives, and the full
+agent-action trace) whenever the request can be planned.
+
+**A5** keeps this exact endpoint and contract but lets the agent perform a *bounded, model-driven*
+sequence of tool calls before deciding (A5 brief §2/§7/§23). The only response-schema change is
+**additive**: a tool call in ``agent_actions[]`` may now carry ``error_code`` when it failed
+(API_CONTRACTS §4/§9). The trace may therefore contain more than one tool call, in a model-selected
+order — never a hard-coded sequence. If the planner exceeds ``MAX_AGENT_ITERATIONS`` the agent stops
+safely and returns its observed actions with **no** fabricated recommendation (A5 brief §8).
 
 Honesty (A3 brief §7/§17; AGENT_SPEC §15–§16): route figures come from a deterministic MOCK
-candidate provider and every result is labelled ``data_source="mock"``. Extraction still uses real
-Qwen when ``MODEL_STUDIO_API_KEY`` is set, else the deterministic mock extractor (A2). If the
-request needs clarification, the agent **stops before deciding** and returns status
+candidate provider and every result is labelled ``data_source="mock"``. Extraction and tool
+selection use real Qwen when ``MODEL_STUDIO_API_KEY`` is set, else the deterministic mocks (A2/A5).
+If the request needs clarification, the agent **stops before deciding** and returns status
 ``UNDERSTANDING`` (A2 behaviour preserved). Malformed model output is rejected safely as a 502.
 """
 
@@ -31,7 +38,7 @@ router = APIRouter(tags=["route"])
 @router.post(
     "/plan",
     response_model=PlanResponse,
-    summary="Plan a route with the A3 agent (mock candidates, deterministic decision)",
+    summary="Plan a route with the agent (A5 multi-step tool loop; mock candidates, deterministic decision)",
 )
 def plan_route(
     request: PlanRequest,

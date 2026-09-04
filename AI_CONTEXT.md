@@ -113,8 +113,8 @@ Workstream A proceeds through phases **A1 → A10**.
 A1 Project Foundation             ✅ implemented
 A2 Travel Request Understanding   ✅ implemented
 A3 Agent Architecture             ✅ implemented / orchestration + decision
-A4 Agent Tool System              ← current / tool contract + registry + executor implemented
-A5 Tool-Calling Orchestrator
+A4 Agent Tool System              ✅ implemented / tool contract + registry + executor
+A5 Tool-Calling Orchestrator      ← current / bounded multi-step Qwen tool loop implemented
 A6 Route Decision Engine
 A7 Mock Intelligence Integration
 A8 Agent Experience / UI
@@ -122,18 +122,22 @@ A9 Final API & Agent State
 A10 Workstream B Handover
 ```
 
-**CURRENT PHASE: A4 — Tool System & Capability Execution.**
+**CURRENT PHASE: A5 — Tool-Calling Orchestrator (Autonomous Multi-Step Qwen Tool Calling).**
 
-Do **not** auto-advance into A5 or any later phase. Wait for an explicit human
-instruction. A4 turns the A3 tool abstraction into a clean capability-execution system — a
-structured `ToolResult` (`success` / `tool_name` / `data_source` / `data` / `error`), Pydantic input
-validation, an explicit `AVAILABLE` / `NOT_IMPLEMENTED` / `DISABLED` / `ERROR` availability model, a
-duplicate-rejecting registry, and a safe `ToolExecutor` (availability gate + timeout +
-exception/malformed guards) — with `search_routes` `AVAILABLE` on the deterministic **mock** provider
-and the fare/delay/availability/booking tools honest `NOT_IMPLEMENTED` stubs. Tool invocation stays
-orchestrator-controlled. All route data is **mock**. Do not start real Workstream B/C work (ML
-models, PostGIS, GTFS ingestion, browser automation, booking, Travel Pass generation) or the A5+
-Qwen tool-calling loop — those are later phases.
+Do **not** auto-advance into A6 or any later phase. Wait for an explicit human
+instruction. A5 connects the model to the A4 tool seam: the orchestrator runs a **bounded,
+model-driven multi-step loop** — Qwen receives the `TravelRequest` + context + tool definitions and
+**selects** which available tool to call next (the sequence is model-chosen, not hard-coded); the app
+validates each call, resolves + executes it through the A4 `ToolRegistry` → `ToolExecutor`, appends the
+structured `ToolResult` to the transcript (successes **and** failures, verbatim), and repeats until the
+model returns a final answer or the `MAX_AGENT_ITERATIONS` limit (default **8**) is hit. Duplicate/loop
+detection suppresses repeated identical calls. It runs on **real Qwen** (when `MODEL_STUDIO_API_KEY` is
+set) or a **deterministic mock** planner (no key) — route data is always `data_source: mock`. The final
+recommendation is **grounded** in tool-gathered candidates via the A3 `DecisionEngine` (never
+fabricated; on the iteration limit the agent stops honestly and returns no recommendation). Invocation
+is still only over the A4 seam (`search_routes` AVAILABLE on mock; the rest honest `NOT_IMPLEMENTED`
+stubs). All route data is **mock**. Do not start real Workstream B/C work (ML models, PostGIS, GTFS
+ingestion, browser automation, booking, Travel Pass generation) or A6+ logic — those are later phases.
 
 ---
 
@@ -155,13 +159,13 @@ RouteWise - Agentic/
 │   └── DEMO.md
 ├── frontend/              ← React + Vite + TS app (Workstream A UI + design tokens)
 │   ├── README.md
-│   ├── src/main.tsx · App.tsx                 ← A3 app shell (request input → agent progress → mock decision)
+│   ├── src/main.tsx · App.tsx                 ← app shell (request input → agent progress timeline → mock decision); A5 renders the multi-step tool trace
 │   ├── src/services/api/                      ← the ONLY backend caller (client · health · routePlan)
-│   ├── src/config/env.ts · src/types/api.ts   ← runtime config + contract-mirroring types
+│   ├── src/config/env.ts · src/types/api.ts   ← runtime config + contract-mirroring types (A5: ToolCall.error_code)
 │   └── src/styles/tokens.css · globals.css    ← CSS source of truth for the design system
-├── backend/               ← FastAPI (Workstream A agent + API) — A1 foundation + A2 understanding + A3 agent
+├── backend/               ← FastAPI (Workstream A agent + API) — A1 foundation + A2 understanding + A3 agent + A4 tools + A5 tool loop
 │   ├── README.md
-│   └── app/ (main · config · logging_config · api/ · schemas/ · agent/ · tools/ · services/ai/ incl. extraction) · tests/
+│   └── app/ (main · config · logging_config · api/ · schemas/ · agent/ · tools/ · services/ai/ incl. extraction + agent tool-calling planner) · tests/
 ├── data/                  ← mock/static data (shared; real GTFS is Workstream B)
 │   └── README.md
 ├── models/                ← ML artifacts (Workstream B — DO NOT implement yet)

@@ -380,6 +380,10 @@ export default function App() {
                             {action.tool_call.data_source && (
                               <span className="tag">{action.tool_call.data_source}</span>
                             )}
+                            {/* A5 (brief §10/§19): show *why* a call failed, same badge token. */}
+                            {action.tool_call.error_code && (
+                              <span className="tag">{action.tool_call.error_code}</span>
+                            )}
                             {action.tool_call.result_summary
                               ? ` — ${action.tool_call.result_summary}`
                               : ''}

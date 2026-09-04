@@ -6,21 +6,26 @@
 > agent → tools → transit intelligence/ML → automation → data/external services.
 >
 > **Status:** **A1 (foundation), A2 (request understanding), A3 (agent orchestration & decision),
-> and A4 (tool system & capability execution) are implemented.** A FastAPI backend (config, logging,
-> CORS, `GET /health`, structured errors) now runs a real agent layer: `POST /api/route/plan`
-> extracts a validated `TravelRequest` (A2 — Qwen or a deterministic mock), then `app/agent/` drives
-> the canonical state machine and `app/agent/decision.py` scores **mock** candidates from
-> `app/tools/` into a recommendation, alternatives, concise reasons, and an `agent_actions[]` trace.
-> **A4** turned `app/tools/` into a clean capability-execution system — a structured `ToolResult`,
-> Pydantic input validation, an explicit availability model, and a safe `ToolExecutor` (timeout +
-> exception/malformed guards) behind the registry — with `search_routes` `AVAILABLE` on a
-> deterministic mock provider and the fare/delay/availability/booking tools honest `NOT_IMPLEMENTED`
-> stubs. The React + Vite + TypeScript frontend (app shell + a centralized `services/api` client)
-> shows the parsed request, the agent-progress timeline (now with per-tool status/source), and the
-> mock decision, with the design tokens (`frontend/src/styles/`) as the visual source of truth.
-> Everything else here (real tools, ML, automation, execution, the full component UI) remains the
-> **agreed plan** for A5+. All route data is **mock**. Keep it **suitable for a hackathon MVP** —
-> simple, demonstrable, mock-backed.
+> A4 (tool system & capability execution), and A5 (multi-step Qwen tool-calling orchestrator) are
+> implemented.** A FastAPI backend (config, logging, CORS, `GET /health`, structured errors) now runs
+> a real agent layer: `POST /api/route/plan` extracts a validated `TravelRequest` (A2 — Qwen or a
+> deterministic mock), then `app/agent/` drives the canonical state machine and `app/agent/decision.py`
+> scores **mock** candidates from `app/tools/` into a recommendation, alternatives, concise reasons,
+> and an `agent_actions[]` trace. **A4** turned `app/tools/` into a clean capability-execution system —
+> a structured `ToolResult`, Pydantic input validation, an explicit availability model, and a safe
+> `ToolExecutor` (timeout + exception/malformed guards) behind the registry — with `search_routes`
+> `AVAILABLE` on a deterministic mock provider and the fare/delay/availability/booking tools honest
+> `NOT_IMPLEMENTED` stubs. **A5** connects the model to that seam: `app/services/ai/agent.py` is a
+> Qwen **tool-calling adapter** (real + deterministic mock) and `app/agent/orchestrator.py` runs a
+> **bounded multi-step loop** — Qwen selects each available tool, the app validates + executes it via
+> the registry/executor and feeds the structured result back, repeating until a final answer or
+> `MAX_AGENT_ITERATIONS` (default 8), with duplicate-call protection and a decision **grounded** in the
+> A3 engine. The React + Vite + TypeScript frontend (app shell + a centralized `services/api` client)
+> shows the parsed request, the agent-progress timeline (per-tool status/source, and — A5 — any
+> `error_code`), and the mock decision, with the design tokens (`frontend/src/styles/`) as the visual
+> source of truth. Everything else here (real tools, ML, automation, execution, the full component UI)
+> remains the **agreed plan** for A6+. All route data is **mock**. Keep it **suitable for a hackathon
+> MVP** — simple, demonstrable, mock-backed.
 
 ---
 
@@ -201,8 +206,10 @@ recorded here and in `frontend/README.md`.
 **Workstream A owns the backend** (agent + API). Structure below — **A1 implemented the
 foundation files**, **A2 added request understanding** (`schemas/travel_request.py`,
 `services/ai/extraction.py`), **A3 added the agent + tools** (`agent/`, `tools/`,
-`schemas/candidate.py`), and **A4 refined the tool seam into a capability-execution system**
-(`tools/base.py`, `tools/executor.py`, `tools/registry.py`) (✅):
+`schemas/candidate.py`), **A4 refined the tool seam into a capability-execution system**
+(`tools/base.py`, `tools/executor.py`, `tools/registry.py`), and **A5 added the Qwen tool-calling
+adapter + multi-step loop** (`services/ai/agent.py`; `agent/orchestrator.py` now runs the bounded
+loop; `config.py` gained `MAX_AGENT_ITERATIONS`; `schemas/route.py` gained `ToolCall.error_code`) (✅):
 
 ```
 backend/
@@ -210,12 +217,12 @@ backend/
 │   ├── main.py            # ✅ FastAPI entrypoint, CORS, router registration, error handlers
 │   ├── config.py          # ✅ settings/env (API keys via env only — never committed)
 │   ├── logging_config.py  # ✅ logging foundation
-│   ├── api/               # ✅ health.py · route.py (A3: extraction → agent → decision) · router.py  (agent status/stream: A5/A8/A9)
-│   ├── schemas/           # ✅ Pydantic models mirroring API_CONTRACTS.md (A2 travel_request.py · A3 candidate.py)
-│   ├── services/ai/       # ✅ AI abstraction (base · qwen_client · mock_client · factory) + A2 extraction.py
-│   ├── agent/             # ✅ A3: state.py (state machine + execution context) · decision.py (scoring) · orchestrator.py
+│   ├── api/               # ✅ health.py · route.py (A3 extraction → A5 agent loop → decision) · router.py  (agent status/stream: A8/A9)
+│   ├── schemas/           # ✅ Pydantic models mirroring API_CONTRACTS.md (A2 travel_request.py · A3 candidate.py · A5 route.py: ToolCall.error_code)
+│   ├── services/ai/       # ✅ AI abstraction (base · qwen_client · mock_client · factory) + A2 extraction.py + A5 agent.py (Qwen tool-calling planner)
+│   ├── agent/             # ✅ A3: state.py (state machine + execution context) · decision.py (scoring) · orchestrator.py (A5 bounded multi-step loop)
 │   └── tools/             # ✅ A3/A4: base.py (Tool ABC + ToolResult) · executor.py (A4 safe execution) · candidates.py (mock provider) · capabilities.py · registry.py (A→B/C seam)
-├── tests/                 # ✅ foundation + A2 extraction + A3 state/decision/agent/API + A4 tool contract/registry/execution/stub/integration tests
+├── tests/                 # ✅ foundation + A2 extraction + A3 state/decision/agent/API + A4 tool contract/registry/execution/stub/integration + A5 qwen-tool-calling/agent-loop tests
 ├── requirements.txt       # ✅ dependencies (requirements.txt chosen over pyproject.toml)
 ├── .env.example           # ✅ config template (never commit .env)
 └── README.md
@@ -243,25 +250,31 @@ UNDERSTAND → REASON → ACT → ADAPT → DELIVER
 ```
 
 Conceptual internal pipeline (built in phases A2–A7; **[Understanding] ✅ A2**,
-**[Planning]/[Tool calling]/[Evaluation]/[Decision] ✅ A3 — deterministic, over mock data**, and
-**[Tool calling] hardened in ✅ A4 — registry → executor → structured `ToolResult`**):
+**[Planning]/[Tool calling]/[Evaluation]/[Decision] ✅ A3 — deterministic, over mock data**,
+**[Tool calling] hardened in ✅ A4 — registry → executor → structured `ToolResult`**, and
+**[Planning]+[Tool calling] made model-driven in ✅ A5 — a bounded multi-step Qwen loop**):
 
 ```
 Travel request (text + structured fields)
    → [Understanding]  ✅ A2: parse → TravelRequest + constraints (hard/soft) + missing-info detection
-   → [Planning]       ✅ A3: choose the candidate provider + scoring pass (deterministic, not an LLM)
-   → [Tool calling]   ✅ A3/A4: registry → executor (validate + timeout + guards) → search_routes
-                        (mock provider, AVAILABLE); fare/delay/availability/booking = NOT_IMPLEMENTED
+   → [Planning]       ✅ A5: Qwen is given the TravelRequest + AVAILABLE tool defs and *selects* the
+                        next tool (model-driven sequence, not hard-coded); bounded multi-step loop
+   → [Tool calling]   ✅ A4/A5: each selected call → registry → executor (validate + timeout + guards)
+                        → structured ToolResult fed back to Qwen; search_routes (mock, AVAILABLE);
+                        fare/delay/availability/booking = NOT_IMPLEMENTED (never fabricated)
    → [Evaluation]     ✅ A3: filter hard constraints → score soft prefs → rank (agent/decision.py)
-   → [Decision]       ✅ A3: recommendation + alternatives + concise reasons
-   → [Adaptation]     on disruption → REPLANNING loop back to searching (A5+)
+   → [Decision]       ✅ A3: recommendation + alternatives + concise reasons (grounded in tool data)
+   → [Adaptation]     on disruption → REPLANNING loop back to searching (A6+)
    → [Delivery]       recommendation + explanation + agent_actions (+ Travel Pass data)
 ```
 
 - **Reasoning engine:** **Qwen** via Alibaba Cloud Model Studio. **A2** wires Qwen for request
-  **extraction** (understanding) behind the existing AI abstraction. **A3's route decision is
-  deterministic** (`agent/decision.py` transparent scoring) — Qwen is **not** called for route
-  selection; an LLM tool-calling loop is A5+.
+  **extraction** (understanding) behind the existing AI abstraction. **A5** wires Qwen for **tool
+  calling** (`services/ai/agent.py`) — the model chooses which available tool to call next in a
+  bounded loop; with no `MODEL_STUDIO_API_KEY` a deterministic **mock** planner drives the same loop.
+  **The route decision itself stays deterministic** (`agent/decision.py` transparent scoring over the
+  tool-gathered candidates) — Qwen selects tools but does **not** invent candidate facts or the final
+  pick ([`AGENT_SPEC.md` §15–16](AGENT_SPEC.md)).
 - **State:** the agent reports one of the **9 canonical states** (see
   [`AGENT_SPEC.md`](AGENT_SPEC.md)); these drive the UI and the `status` field.
 - **Determinism:** same inputs + same mock data ⇒ same recommendation (critical for a reliable
@@ -287,11 +300,13 @@ Travel request (text + structured fields)
 11. On disruption → Agent REPLANNING → repeat 5–9 → updated recommendation
 ```
 
-> **A3 scope:** steps **1–7 and 9–10** are implemented over **mock** candidates (extraction →
-> planning → deterministic scoring → decision → `agent_actions[]` → frontend). Step **8
-> (EXECUTING)** and step **11 (REPLANNING)** are **not** exercised — `prepare_booking` /
-> `check_availability` and disruption handling are honest `not_implemented` stubs (A4+); the agent
-> goes **EVALUATING → COMPLETED**.
+> **A3–A5 scope:** steps **1–7 and 9–10** are implemented over **mock** candidates (extraction →
+> planning → deterministic scoring → decision → `agent_actions[]` → frontend). **A5** makes step **5**
+> a **model-driven, multi-step loop**: Qwen selects each tool call, which may revisit SEARCHING (and
+> reach EXECUTING when it picks an action tool). Step **8 (EXECUTING)** and step **11 (REPLANNING)**
+> are still **not** truly exercised — `prepare_booking` / `check_availability` and disruption handling
+> are honest `not_implemented` stubs (A6/A7); on the happy path the agent goes
+> **EVALUATING → COMPLETED**.
 
 Agent steps/states are surfaced to the UI as `agent_actions[]` (embedded) and/or streamed —
 the frontend abstracts the mechanism (see §3.3).
@@ -301,12 +316,14 @@ the frontend abstracts the mechanism (see §3.3).
 ## 7. API flow
 
 - Frontend calls **`POST /api/route/plan`** (the reserved primary endpoint; an honest
-  **foundation stub** in A1, a real **mock agent decision** in **A3**, live-data planning in **A9**).
+  **foundation stub** in A1, a real **mock agent decision** in **A3**, a **model-driven multi-step
+  tool loop** in **A5**, live-data planning in **A9**).
 - Response carries `status` (canonical agent state), `request` (normalized), `recommendation`,
   `legs[]`, `alternatives[]`, `agent_actions[]`, and `reasoning`. In A3 `legs[]` is empty and all
   route figures are **mock**; `recommendation`/`alternatives`/`agent_actions` are populated.
 - Optional (later) **`GET /api/agent/status`** and **`GET /api/agent/stream`** for live agent
-  activity — mechanism **TBD** in A5/A8/A9.
+  activity — mechanism **TBD** in A8/A9 (**A5** keeps the whole loop in-request: a single response
+  with the full `agent_actions[]` trace, no streaming).
 - Errors use a structured envelope. Full shapes in
   [`API_CONTRACTS.md`](API_CONTRACTS.md).
 

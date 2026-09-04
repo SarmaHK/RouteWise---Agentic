@@ -99,7 +99,9 @@ class ToolCall(BaseModel):
     A4 adds two **additive, optional** fields so the UI can show tool-execution status safely
     (A4 brief §15/§17): ``availability`` — the resolved tool's capability state (``available`` /
     ``not_implemented`` / ``disabled`` / ``error``) — and ``data_source``, the provenance of this
-    call's output. Both default to ``None`` to preserve the A3 contract.
+    call's output. A5 adds one more **additive, optional** field, ``error_code`` — the structured
+    failure code when a call did not succeed (A5 brief §10) — so the multi-step trace can show why
+    a tool call failed. All default to ``None`` to preserve the A3/A4 contract.
     """
 
     name: str
@@ -112,6 +114,14 @@ class ToolCall(BaseModel):
     )
     data_source: Optional[DataSource] = Field(
         default=None, description="Provenance of this tool call's output (A4, additive)."
+    )
+    error_code: Optional[str] = Field(
+        default=None,
+        description=(
+            "Structured failure code when the call did not succeed (A5, additive): e.g. "
+            "INVALID_INPUT | UNKNOWN_TOOL | NOT_IMPLEMENTED | TOOL_UNAVAILABLE | "
+            "EXECUTION_ERROR | TIMEOUT | MALFORMED_RESULT."
+        ),
     )
 
 
