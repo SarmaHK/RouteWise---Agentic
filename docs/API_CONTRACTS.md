@@ -22,7 +22,8 @@ used throughout, so no reader mistakes a plan for a built feature:
 
 | Contract element | Status | Owner / phase |
 |------------------|--------|---------------|
-| `POST /api/route/plan` shape (§2) | CURRENT (reserved) | A — **A1 foundation stub**; real impl A9 |
+| `POST /api/route/plan` shape (§2) | CURRENT (reserved) | A — **A2 request understanding** (extraction only); real planning A9 |
+| `TravelRequest` normalized-request shape (§2.1) | CURRENT (implemented) | A — A2 |
 | `GET /health` liveness probe (§2) | CURRENT (implemented) | A — A1 |
 | Route / leg / recommendation shapes (§3) | CURRENT (mock) | A → B (real data) |
 | `agent_actions[]` shape (§4) | CURRENT | A |
@@ -64,19 +65,22 @@ used throughout, so no reader mistakes a plan for a built feature:
 Submit a travel request; receive the agent's plan/recommendation.
 
 - **Owner:** Workstream A.
-- **Status:** contract reserved; the **real** implementation lands in **A9 — Final API & Agent
-  State**. **A1 ships an honest foundation stub** at this path — the same request/response shape,
-  `status: IDLE`, empty `recommendation`/`legs`/`alternatives`, and a single explanatory
-  `agent_actions[]` entry (`data_source: mock`). It proves the frontend → backend pipe without
-  fabricating a plan. Do **not** build the real planning/decision logic during A1.
+- **Status:** contract reserved; the **real** planning/decision implementation lands in **A9 —
+  Final API & Agent State**. **A1 shipped an honest foundation stub** (`status: IDLE`). **A2 now
+  implements Travel Request Understanding** at this path: it extracts the natural-language request
+  into a normalized **`TravelRequest`** (§2.1) and returns `status: UNDERSTANDING` with empty
+  `recommendation`/`legs`/`alternatives` and a single explanatory `agent_actions[]` entry. A2
+  **understands only** — it does **not** plan, search, or score a route (that arrives in A3+).
 
 #### Request (conceptual)
 
 ```json
 {
+  "raw_text": "I am at Colombo Fort and need to reach Ella under a budget of LKR 2,000...",
   "origin": "...",
   "destination": "...",
   "budget": 2000,
+  "currency": "LKR",
   "luggage": "...",
   "walking_preference": "...",
   "departure_time": "...",
@@ -87,19 +91,25 @@ Submit a travel request; receive the agent's plan/recommendation.
 
 | Field | Type | Required | Notes |
 |-------|------|----------|-------|
-| `origin` | string | ✅ | Free text or normalized place name (e.g., "Colombo Fort"). |
-| `destination` | string | ✅ | e.g., "Ella". |
+| `raw_text` | string | optional* | **Added in A2** (resolves the decision reserved below). The natural-language request; the primary A2 extraction input. |
+| `origin` | string | optional* | Free text or normalized place name (e.g., "Colombo Fort"). In A2 it may be **extracted from `raw_text`** instead of sent explicitly. |
+| `destination` | string | optional* | e.g., "Ella". May be extracted from `raw_text` in A2. |
 | `budget` | number | optional | Max total fare in **LKR**. Treated as a **hard constraint** when present. |
-| `luggage` | string/enum | optional | e.g., `"none" \| "light" \| "heavy"` (or free text). Affects comfort/transfers. |
-| `walking_preference` | string/enum | optional | e.g., `"minimize" \| "normal" \| "ok"`. **Soft preference.** |
+| `currency` | string | optional | **Added in A2.** Currency for `budget`; defaults to **LKR**. |
+| `luggage` | string/enum | optional | `"none" \| "light" \| "heavy"`. Affects comfort/transfers. |
+| `walking_preference` | string/enum | optional | `"minimize" \| "normal" \| "ok"`. **Soft preference.** |
 | `departure_time` | string (ISO 8601) | optional | When the traveler wants to leave. |
 | `arrival_deadline` | string (ISO 8601) | optional | Must-arrive-by. **Hard constraint** when present. |
 | `preferences` | object | optional | Open bag for extra soft preferences (fewer transfers, comfort, scenic, etc.). |
 
-> The **natural-language request** may be sent as the structured fields above (extracted by the
-> client) **and/or** as a raw text field. A2 (Travel Request Understanding) decides whether a
-> `raw_text`/`query` string field is added — if so, add it **here** as an optional field and
-> keep the structured fields as the normalized output. Do not add it ad hoc.
+> \* **At least one of `raw_text`, `origin`, or `destination` is required** (A2). An empty body is
+> rejected with `422` (§5). Previously `origin`+`destination` were both mandatory; A2 **relaxes**
+> them to optional because they can be extracted from `raw_text` — an additive/relaxing change
+> noted per §9.
+>
+> **Resolved (A2):** the natural-language request is sent as the optional `raw_text` field (added
+> above, exactly as this doc reserved). The structured fields remain the **normalized output**
+> shape, now returned as `TravelRequest` (§2.1).
 
 #### Response (conceptual)
 
@@ -116,19 +126,60 @@ Submit a travel request; receive the agent's plan/recommendation.
 
 | Field | Type | Notes |
 |-------|------|-------|
-| `status` | enum | One of the canonical **Agent states** ([`AGENT_SPEC.md` §5](AGENT_SPEC.md)): `IDLE, UNDERSTANDING, PLANNING, SEARCHING, EVALUATING, EXECUTING, REPLANNING, COMPLETED, ERROR`. On a finished plan, `COMPLETED`. |
-| `request` | object | The **normalized/extracted** request the agent understood: origin, destination, hard constraints, soft preferences, and any **missing info** it detected. Lets the UI echo constraints back. |
+| `status` | enum | One of the canonical **Agent states** ([`AGENT_SPEC.md` §5](AGENT_SPEC.md)): `IDLE, UNDERSTANDING, PLANNING, SEARCHING, EVALUATING, EXECUTING, REPLANNING, COMPLETED, ERROR`. **A2 returns `UNDERSTANDING`** (extraction only); a finished plan returns `COMPLETED` (A9). |
+| `request` | object | The **normalized/extracted** `TravelRequest` (§2.1) the agent understood: origin, destination, hard constraints, soft preferences, and any **missing info**/clarification it detected. Lets the UI echo constraints back. |
 | `recommendation` | object | The chosen route + rationale. See §3. |
 | `legs` | array | Ordered legs of the recommended route. See §3. |
 | `alternatives` | array | Other candidate routes with trade-offs (same shape as recommendation). |
 | `agent_actions` | array | Ordered log of what the agent did: states entered, tools called, results summary, decisions. Drives the Agent activity UI. See §4. |
+
+#### 2.1 `TravelRequest` — the normalized request (A2)
+
+`response.request` is a **`TravelRequest`**: the validated, normalized understanding of the trip.
+Every travel-specific field is **optional** — the extractor **never invents** values (honesty,
+[`AGENT_SPEC.md` §15](AGENT_SPEC.md)). Missing hard constraints are surfaced, not fabricated.
+
+```json
+{
+  "origin": "Colombo Fort",
+  "destination": "Ella",
+  "budget": 2000,
+  "currency": "LKR",
+  "luggage": "heavy",
+  "walking_preference": "minimize",
+  "departure_time": null,
+  "arrival_deadline": null,
+  "preferences": {},
+  "raw_text": "I am at Colombo Fort and need to reach Ella under a budget of LKR 2,000...",
+  "clarification_required": false,
+  "missing_fields": [],
+  "clarification_questions": [],
+  "assumptions": [],
+  "extraction_source": "mock"
+}
+```
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `origin` / `destination` | string? | Extracted place names; `null` when not stated. |
+| `budget` / `currency` | number? / string | Max fare + currency (default **LKR**); `budget` is `null` when unstated. |
+| `luggage` | enum? | `none \| light \| heavy`; `null` when unstated. |
+| `walking_preference` | enum? | `minimize \| normal \| ok`; `null` when unstated. |
+| `departure_time` / `arrival_deadline` | string (ISO 8601)? | `null` when unstated. |
+| `preferences` | object | Other preserved soft preferences (e.g., `{ "cost": "cheap" }` from "cheaply"). |
+| `raw_text` | string? | The original request, echoed for transparency. |
+| `clarification_required` | boolean | `true` when a hard constraint (`origin`/`destination`) is missing. |
+| `missing_fields` | string[] | Names of required fields that are absent. |
+| `clarification_questions` | string[] | Short human-readable questions for the missing fields. |
+| `assumptions` | string[] | Any safe assumption recorded (e.g., "assumed today's date for a stated time"). |
+| `extraction_source` | enum? | **Honesty flag:** `mock` (deterministic offline extractor) `\|` `qwen` (real Model Studio). |
 
 ### `GET /health` — liveness probe (implemented in A1)
 
 An infrastructure probe (not part of the versioned `/api` surface), mounted at the **root**:
 
 ```json
-{ "status": "ok", "service": "routewise-agentic-backend", "phase": "A1-foundation" }
+{ "status": "ok", "service": "routewise-agentic-backend", "phase": "A2-understanding" }
 ```
 
 - **Owner:** Workstream A. **Status:** implemented in A1.
@@ -255,6 +306,7 @@ All errors return a consistent body plus an appropriate HTTP status.
 | `422` | Semantically invalid (e.g., origin == destination, impossible deadline). |
 | `404` | Unknown resource (e.g., place not found in mock gazetteer). |
 | `500` | Unexpected server error. |
+| `502` | Upstream extraction produced invalid output (A2) — mapped to `code: bad_gateway`. Malformed model output is rejected, never silently accepted. |
 | `503` | Downstream/tool unavailable (mock or real). |
 
 - `error.code` is a **stable machine string** (clients may branch on it); `message` is

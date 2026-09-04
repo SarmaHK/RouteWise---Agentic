@@ -1,8 +1,9 @@
-"""FastAPI application entrypoint (Workstream A, Phase A1 foundation).
+"""FastAPI application entrypoint (Workstream A).
 
 Wires together: configuration, logging, CORS for local frontend dev, the health probe, the
-``/api`` router (foundation ``POST /api/route/plan``), and structured error handling matching
-the envelope in docs/API_CONTRACTS.md §5. No agent / tool / decision logic is built in A1.
+``/api`` router (``POST /api/route/plan``), and structured error handling matching
+the envelope in docs/API_CONTRACTS.md §5. In A2 the plan endpoint performs natural-language
+request UNDERSTANDING (extraction) only — no agent orchestration / tool / decision logic yet.
 
 Run locally from the ``backend/`` directory::
 
@@ -35,7 +36,7 @@ async def lifespan(app: FastAPI):
     """Configure logging on startup; log a NON-secret view only (never the API key)."""
     settings = get_settings()
     configure_logging(settings.log_level)
-    logger.info("RouteWise backend starting (phase A1): %s", settings.public_view())
+    logger.info("RouteWise backend starting (phase A2): %s", settings.public_view())
     yield
     logger.info("RouteWise backend shutting down.")
 
@@ -48,8 +49,8 @@ def create_app() -> FastAPI:
         version=__version__,
         description=(
             "Autonomous Multi-Modal Travel & Transit Coordinator for Tourism in Sri Lanka. "
-            "Phase A1 foundation: health probe + a foundation POST /api/route/plan stub. "
-            "Real planning arrives in A2-A9."
+            "Phase A2: health probe + POST /api/route/plan natural-language request "
+            "understanding (extraction only). Route planning/decision logic arrives in A3-A9."
         ),
         lifespan=lifespan,
     )
@@ -71,7 +72,7 @@ def create_app() -> FastAPI:
     def root() -> dict[str, str]:
         return {
             "service": "routewise-agentic-backend",
-            "phase": "A1-foundation",
+            "phase": "A2-understanding",
             "health": "/health",
             "docs": "/docs",
         }
@@ -120,6 +121,7 @@ def _code_for_status(status_code: int) -> str:
         400: "bad_request",
         404: "not_found",
         422: "unprocessable_entity",
+        502: "bad_gateway",
         503: "service_unavailable",
     }.get(status_code, "http_error")
 

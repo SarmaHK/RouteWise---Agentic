@@ -110,8 +110,8 @@ B informs, C acts.** See [`docs/PROJECT.md`](docs/PROJECT.md) for exact scope.
 Workstream A proceeds through phases **A1 → A10**.
 
 ```
-A1 Project Foundation        ← current / foundation implemented
-A2 Travel Request Understanding
+A1 Project Foundation        ✅ implemented
+A2 Travel Request Understanding   ← current / understanding implemented
 A3 Agent Architecture
 A4 Agent Tool System
 A5 Tool-Calling Orchestrator
@@ -122,12 +122,12 @@ A9 Final API & Agent State
 A10 Workstream B Handover
 ```
 
-**CURRENT PHASE: A1 — Project Foundation.**
+**CURRENT PHASE: A2 — Travel Request Understanding.**
 
-Do **not** auto-advance into A2 or any later phase. Wait for an explicit human
-instruction. Do not start Qwen tool-calling, agent orchestration, ML models, PostGIS,
-GTFS ingestion, browser automation, booking, or Travel Pass generation — those are
-later phases.
+Do **not** auto-advance into A3 or any later phase. Wait for an explicit human
+instruction. A2 covers request **understanding only** — do not start route planning, Qwen
+tool-calling, agent orchestration, ML models, PostGIS, GTFS ingestion, browser automation,
+booking, or Travel Pass generation — those are later phases.
 
 ---
 
@@ -149,13 +149,13 @@ RouteWise - Agentic/
 │   └── DEMO.md
 ├── frontend/              ← React + Vite + TS app (Workstream A UI + design tokens)
 │   ├── README.md
-│   ├── src/main.tsx · App.tsx                 ← A1 foundation app shell (mounts <App/>)
+│   ├── src/main.tsx · App.tsx                 ← A2 app shell (travel-request input + parsed TravelRequest)
 │   ├── src/services/api/                      ← the ONLY backend caller (client · health · routePlan)
 │   ├── src/config/env.ts · src/types/api.ts   ← runtime config + contract-mirroring types
 │   └── src/styles/tokens.css · globals.css    ← CSS source of truth for the design system
-├── backend/               ← FastAPI foundation (Workstream A agent + API) — implemented in A1
+├── backend/               ← FastAPI (Workstream A agent + API) — A1 foundation + A2 request understanding
 │   ├── README.md
-│   └── app/ (main · config · logging_config · api/ · schemas/ · services/ai/) · tests/
+│   └── app/ (main · config · logging_config · api/ · schemas/ · services/ai/ incl. extraction) · tests/
 ├── data/                  ← mock/static data (shared; real GTFS is Workstream B)
 │   └── README.md
 ├── models/                ← ML artifacts (Workstream B — DO NOT implement yet)

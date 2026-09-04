@@ -109,7 +109,7 @@ thing that works cleanly and is documented — not a speculative framework.
   ([`WORKSTREAMS.md`](WORKSTREAMS.md)) — this is **not** an A-only project.
 - **Implementation is sequenced A-first.** The active build workstream is **A — AI Agent &
   Decision Engine**; B and C are built later by their owners **to the same interfaces**.
-- **Current phase: A1 — Project Foundation.** Do not auto-continue into A2.
+- **Current phase: A2 — Travel Request Understanding.** Do not auto-continue into A3.
 - You may create **clean interfaces / mocks / contracts** where a workstream needs a boundary —
   but **no real B/C functionality** until that workstream is explicitly started.
 

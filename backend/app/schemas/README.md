@@ -8,8 +8,12 @@
 - **A1 ✅ (contract shapes defined):** `route.py` — `PlanRequest`/`PlanResponse`, the
   route/leg/recommendation shapes, `AgentAction`/`AgentState`, `DataSource`; `common.py` —
   `HealthResponse` and the structured error envelope. These mirror the contract now so the
-  frontend `types/` and the backend stay aligned; they are **populated with real data from
-  A2/A9**.
+  frontend `types/` and the backend stay aligned.
+- **A2 ✅ (request understanding):** `travel_request.py` — `TravelRequest` + the
+  `Luggage`/`WalkingPreference`/`ExtractionSource` enums and clarification metadata; `route.py`
+  `PlanRequest` now accepts `raw_text`/`currency` with optional origin/destination (a validator
+  requires at least one input) and `PlanResponse.request` is a validated `TravelRequest`. These
+  are **populated with real data from A2** (the rest from A9).
 
 ## Boundaries
 

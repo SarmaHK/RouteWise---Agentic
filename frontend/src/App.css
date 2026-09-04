@@ -1,11 +1,12 @@
 /*
-  RouteWise Agentic — App shell styles (Phase A1 foundation).
+  RouteWise Agentic — App shell styles (Phase A2 — request understanding).
   Co-located with App.tsx. Consumes ONLY tokens from styles/tokens.css
   (DEVELOPMENT_RULES rules 6–7; DESIGN_SYSTEM golden rule 1: no magic values).
 
-  This is the foundation SHELL, not a registered component — the shared component
+  This is the app SHELL, not a registered component — the shared component
   registry (DESIGN_SYSTEM §13) is built in phase A8. Layout follows §12.1; the four
-  interface states follow §12.8 (skeleton loading, no bouncing spinner).
+  interface states follow §12.8 (skeleton loading, no bouncing spinner); the natural-language
+  request field is the HERO input (§12.5).
 */
 
 /* ---------- Header (§12.1: sticky, --header-height, bottom border) ---------- */
@@ -248,6 +249,26 @@
   color: var(--color-on-error);
 }
 
+/* Warning tone — used for the A2 clarification-needed state (§11.5 never color alone: icon+label). */
+.alert--warning {
+  background-color: var(--color-warning-subtle);
+  border-color: var(--color-warning);
+}
+
+.alert--warning .alert__icon {
+  background-color: var(--color-warning);
+  color: var(--color-text-inverse);
+}
+
+.clarify-list {
+  margin: var(--space-2) 0 0;
+  padding-left: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  color: var(--color-text-secondary);
+}
+
 /* ---------- Skeleton loading (§12.8: subtle, no bouncing spinner) ---------- */
 .skeleton {
   height: var(--space-8);
@@ -257,7 +278,49 @@
   animation: rw-pulse var(--duration-slower) var(--ease-standard) infinite;
 }
 
-/* ---------- Pipe-test result ---------- */
+/* ---------- Form field (§12.5: the NL request is the HERO; label above; §11.2 input tokens) ---------- */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.field__label {
+  font-size: var(--text-label);
+  font-weight: var(--font-semibold);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+
+.textarea {
+  width: 100%;
+  padding: var(--input-padding-y) var(--input-padding-x);
+  background-color: var(--input-bg);
+  border: var(--input-border);
+  border-radius: var(--input-radius);
+  color: var(--input-text);
+  font-family: inherit;
+  font-size: var(--text-body-lg);
+  line-height: var(--leading-normal);
+}
+
+.textarea::placeholder {
+  color: var(--input-placeholder);
+}
+
+.textarea:focus-visible {
+  outline: none;
+  border: var(--input-border-focus);
+  box-shadow: var(--btn-focus-ring);
+}
+
+.field__hint {
+  font-size: var(--text-body-sm);
+  color: var(--color-text-muted);
+}
+
+/* ---------- Parsed result (A2) ---------- */
 .result {
   display: flex;
   flex-direction: column;
@@ -312,6 +375,57 @@
   font-size: var(--badge-font);
   letter-spacing: var(--tracking-wide);
   text-transform: uppercase;
+}
+
+/* ---------- Parsed TravelRequest (A2) — data is mono (§14) ---------- */
+.travel-request {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.travel-request__row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface-sunken);
+  border: var(--border-width) solid var(--color-border);
+}
+
+.travel-request__label {
+  font-size: var(--text-label);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.travel-request__value {
+  margin: 0 0 0 auto;
+  text-align: right;
+  font-size: var(--text-body-sm);
+  color: var(--color-text-primary);
+}
+
+.travel-request__empty {
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
+.assumptions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+/* Inline variant of the data_source tag (no auto left-margin when used mid-sentence). */
+.tag--inline {
+  margin-left: 0;
 }
 
 /* ---------- Footer ---------- */

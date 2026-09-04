@@ -10,8 +10,11 @@
 > agent fits the system), [`API_CONTRACTS.md`](API_CONTRACTS.md) (tools/endpoints), and
 > [`DEMO.md`](DEMO.md) (the agent in the demo).
 >
-> **Status:** specification only. The agent is **not implemented** during A1 — it is built in
-> phases **A2–A7**. Do not implement agent logic in the foundation phase.
+> **Status:** specification. The **UNDERSTANDING** step (§5) is implemented in **A2** —
+> natural-language extraction into a validated `TravelRequest` (see
+> [`API_CONTRACTS.md` §2.1](API_CONTRACTS.md)), using Qwen behind the existing AI abstraction
+> with a deterministic mock fallback. The remaining agent behavior (orchestration, tool calling,
+> scoring, replanning) is built in **A3–A7**. Do not implement later-phase agent logic during A2.
 
 ---
 
@@ -78,7 +81,7 @@ These nine states are the **only** valid agent states. They drive the UI
 | State | Meaning | Example user-facing phrase | Color token |
 |-------|---------|----------------------------|-------------|
 | **IDLE** | No active task; awaiting a request. | "Ready when you are." | `--state-idle` (muted) |
-| **UNDERSTANDING** | Parsing the request; extracting constraints. | "Understanding your request…" | `--state-understanding` (info) |
+| **UNDERSTANDING** | Parsing the request; extracting constraints (**A2 ✅** — extraction into a `TravelRequest`). | "Understanding your request…" | `--state-understanding` (info) |
 | **PLANNING** | Deciding approach and which tools to call. | "Planning your journey…" | `--state-planning` (info) |
 | **SEARCHING** | Querying routes / transit intelligence (tools running). | "Searching routes & checking conditions…" | `--state-searching` (primary) |
 | **EVALUATING** | Comparing candidates; scoring vs constraints/preferences. | "Comparing N routes…" | `--state-evaluating` (secondary) |
@@ -313,7 +316,7 @@ Every completed plan includes a **ReasoningSummary** that:
 | No route within budget | Report honestly; suggest relaxing budget/time; do **not** fake success. |
 | Fare unknown | Call `get_fare_estimate`; if unavailable, say "estimate unavailable" — never invent. |
 | Delay risk high | Surface it; consider re-planning; don't hide it. |
-| Missing destination | Ask or state the assumption; don't guess silently. |
+| Missing destination | Ask or state the assumption; don't guess silently (**A2 ✅**: sets `clarification_required` + a question). |
 | Booking requested | `prepare_booking` only; explicit confirmation before any real commit (Workstream C). |
 | Data is mock | Label `data_source`; never present as real-time. |
 | Tool failed | Mark step `error`; explain; retry or degrade gracefully. |
@@ -322,7 +325,9 @@ Every completed plan includes a **ReasoningSummary** that:
 
 ## 19. Scope reminder
 
-This document defines **behavior/contract**, not implementation. Building the actual agent
-(Qwen integration, orchestration, tool-calling loop, scoring) happens in later phases
-(**A2–A7**). During **A1 — Project Foundation**, do **not** implement agent logic — only keep
-this spec consistent so all future work aligns.
+This document defines **behavior/contract**, not implementation. **A2 — Travel Request
+Understanding** implements the first step only: Qwen-backed **extraction** of a natural-language
+request into a validated `TravelRequest` (§5 UNDERSTANDING), with honest clarification for
+missing hard constraints (§4/§18). The rest of the agent (orchestration, tool-calling loop,
+scoring, replanning) is built in **A3–A7**. During **A2**, do **not** implement later-phase agent
+logic — only keep this spec consistent so all future work aligns.

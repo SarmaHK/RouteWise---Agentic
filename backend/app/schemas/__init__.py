@@ -15,6 +15,12 @@ from app.schemas.route import (
     Recommendation,
     ToolCall,
 )
+from app.schemas.travel_request import (
+    ExtractionSource,
+    Luggage,
+    TravelRequest,
+    WalkingPreference,
+)
 
 __all__ = [
     "ErrorDetail",
@@ -28,4 +34,8 @@ __all__ = [
     "PlanResponse",
     "Recommendation",
     "ToolCall",
+    "ExtractionSource",
+    "Luggage",
+    "TravelRequest",
+    "WalkingPreference",
 ]

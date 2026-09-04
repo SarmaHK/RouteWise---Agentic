@@ -1,9 +1,14 @@
-"""Route-planning schemas (Phase A1 foundation).
+"""Route-planning schemas (Workstream A).
 
 These Pydantic models mirror docs/API_CONTRACTS.md §2–§4 so the frontend types and the
-backend stay aligned. In A1 the ``POST /api/route/plan`` endpoint returns an HONEST
-foundation stub (status IDLE, no fabricated route) — the real planning/decision logic is
-built in A2–A9. Defining the contract shapes now is foundational; implementing them is not.
+backend stay aligned.
+
+A1 defined the contract shapes with an honest foundation stub. A2 (Request Understanding)
+makes ``PlanRequest`` accept free-form natural language: ``origin``/``destination`` are now
+optional because they are extracted from ``raw_text``, and at least one of
+``raw_text``/``origin``/``destination`` must be present. ``PlanResponse.request`` now carries
+the normalized :class:`~app.schemas.travel_request.TravelRequest` the agent understood. No
+route planning/scoring is implemented in A2 (that arrives in A3+).
 """
 
 from __future__ import annotations
@@ -12,7 +17,9 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from app.schemas.travel_request import TravelRequest
 
 
 class AgentState(str, Enum):
@@ -38,12 +45,24 @@ class DataSource(str, Enum):
 
 
 class PlanRequest(BaseModel):
-    """Request body for ``POST /api/route/plan`` (API_CONTRACTS §2)."""
+    """Request body for ``POST /api/route/plan`` (API_CONTRACTS §2).
 
-    origin: str = Field(description='e.g. "Colombo Fort".')
-    destination: str = Field(description='e.g. "Ella".')
+    A2 accepts EITHER structured fields OR free-form ``raw_text``. ``origin``/``destination``
+    are optional here because the extractor derives them from ``raw_text``; a request with
+    none of the three is rejected by :meth:`_require_some_input` (422).
+    """
+
+    origin: Optional[str] = Field(
+        default=None, description='e.g. "Colombo Fort". Optional in A2 (extracted).'
+    )
+    destination: Optional[str] = Field(
+        default=None, description='e.g. "Ella". Optional in A2 (extracted).'
+    )
     budget: Optional[float] = Field(
         default=None, description="Max total fare in LKR (hard constraint when present)."
+    )
+    currency: Optional[str] = Field(
+        default=None, description='Currency for ``budget``; defaults to "LKR" downstream.'
     )
     luggage: Optional[str] = Field(
         default=None, description='e.g. "none" | "light" | "heavy".'
@@ -60,8 +79,18 @@ class PlanRequest(BaseModel):
     )
     raw_text: Optional[str] = Field(
         default=None,
-        description="Optional original natural-language request (normalized in A2).",
+        description="Original natural-language request; the A2 extraction input.",
     )
+
+    @model_validator(mode="after")
+    def _require_some_input(self) -> "PlanRequest":
+        """Reject an empty request: need ``raw_text`` OR an ``origin`` OR a ``destination``."""
+        has_text = bool(self.raw_text and self.raw_text.strip())
+        if not (has_text or self.origin or self.destination):
+            raise ValueError(
+                "Provide at least one of: raw_text, origin, or destination."
+            )
+        return self
 
 
 class ToolCall(BaseModel):
@@ -128,8 +157,8 @@ class PlanResponse(BaseModel):
     """Response for ``POST /api/route/plan`` (API_CONTRACTS §2)."""
 
     status: AgentState
-    request: Optional[PlanRequest] = Field(
-        default=None, description="The normalized request the agent understood."
+    request: Optional[TravelRequest] = Field(
+        default=None, description="The normalized request the agent understood (A2)."
     )
     recommendation: Optional[Recommendation] = None
     legs: list[Leg] = Field(default_factory=list)

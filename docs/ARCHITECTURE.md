@@ -192,7 +192,8 @@ recorded here and in `frontend/README.md`.
 ## 4. Backend architecture (Python / FastAPI)
 
 **Workstream A owns the backend** (agent + API). Structure below — **A1 implemented the
-foundation files** (✅); `agent/` and `tools/` remain folder stubs until A2+:
+foundation files** and **A2 added request understanding** (`schemas/travel_request.py`,
+`services/ai/extraction.py`) (✅); `agent/` and `tools/` remain folder stubs until A3+:
 
 ```
 backend/
@@ -200,12 +201,12 @@ backend/
 │   ├── main.py            # ✅ FastAPI entrypoint, CORS, router registration, error handlers
 │   ├── config.py          # ✅ settings/env (API keys via env only — never committed)
 │   ├── logging_config.py  # ✅ logging foundation
-│   ├── api/               # ✅ health.py · route.py (plan stub) · router.py  (agent status/stream: A5/A8/A9)
-│   ├── schemas/           # ✅ Pydantic models mirroring API_CONTRACTS.md
-│   ├── services/ai/       # ✅ AI service abstraction (base · qwen_client · mock_client · factory)
-│   ├── agent/             # ⏳ A2+: understanding, orchestration, decision engine (Qwen)
+│   ├── api/               # ✅ health.py · route.py (A2 request understanding) · router.py  (agent status/stream: A5/A8/A9)
+│   ├── schemas/           # ✅ Pydantic models mirroring API_CONTRACTS.md (incl. A2 travel_request.py)
+│   ├── services/ai/       # ✅ AI abstraction (base · qwen_client · mock_client · factory) + A2 extraction.py
+│   ├── agent/             # ⏳ A3+: orchestration, decision engine (A2 understanding lives in services/ai/extraction.py)
 │   └── tools/             # ⏳ A4+: tool interfaces + MOCK implementations (A→B/C seam)
-├── tests/                 # ✅ foundation tests
+├── tests/                 # ✅ foundation + A2 extraction/understanding tests
 ├── requirements.txt       # ✅ dependencies (requirements.txt chosen over pyproject.toml)
 ├── .env.example           # ✅ config template (never commit .env)
 └── README.md
@@ -232,11 +233,11 @@ loop is:
 UNDERSTAND → REASON → ACT → ADAPT → DELIVER
 ```
 
-Conceptual internal pipeline (built in phases A2–A7):
+Conceptual internal pipeline (built in phases A2–A7; **[Understanding] ✅ A2**):
 
 ```
 Travel request (text + structured fields)
-   → [Understanding]  parse → intent + constraints (hard/soft) + missing-info detection
+   → [Understanding]  ✅ A2: parse → TravelRequest + constraints (hard/soft) + missing-info detection
    → [Planning]       decide which tools to call and in what order
    → [Tool calling]   search_routes / get_fare_estimate / get_delay_prediction / … (mock now)
    → [Evaluation]     filter by hard constraints → score soft preferences → rank
@@ -245,8 +246,8 @@ Travel request (text + structured fields)
    → [Delivery]       recommendation + explanation + agent_actions (+ Travel Pass data)
 ```
 
-- **Reasoning engine:** **Qwen** via Alibaba Cloud Model Studio (integration is a later phase —
-  **not** built in A1).
+- **Reasoning engine:** **Qwen** via Alibaba Cloud Model Studio. **A2** wires Qwen for request
+  **extraction** (understanding) behind the existing AI abstraction; orchestration/reasoning is A3+.
 - **State:** the agent reports one of the **9 canonical states** (see
   [`AGENT_SPEC.md`](AGENT_SPEC.md)); these drive the UI and the `status` field.
 - **Determinism:** same inputs + same mock data ⇒ same recommendation (critical for a reliable

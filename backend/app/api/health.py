@@ -1,4 +1,4 @@
-"""Health-check endpoint (A1 foundation).
+"""Health-check endpoint (Workstream A foundation).
 
 ``GET /health`` → ``{"status": "ok", ...}``. The contracted field is ``status``; ``service``
 and ``phase`` are additive metadata (API_CONTRACTS §9). Mounted at the ROOT path (not under
@@ -19,5 +19,5 @@ router = APIRouter(tags=["health"])
 def health() -> HealthResponse:
     """Return a simple liveness response confirming the backend is running."""
     return HealthResponse(
-        status="ok", service="routewise-agentic-backend", phase="A1-foundation"
+        status="ok", service="routewise-agentic-backend", phase="A2-understanding"
     )

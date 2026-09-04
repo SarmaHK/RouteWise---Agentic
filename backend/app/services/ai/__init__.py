@@ -11,9 +11,25 @@ Public surface::
     AIClient                                    (interface)
     QwenClient, MockAIClient                    (implementations)
     AIResponse, ConnectivityResult              (result types)
+
+Phase A2 adds travel-request extraction on top of the same abstraction::
+
+    get_extractor()               -> TravelRequestExtractor (cached accessor)
+    build_extractor(settings)     -> TravelRequestExtractor (explicit, test-friendly)
+    TravelRequestExtractor                       (interface)
+    QwenTravelRequestExtractor, MockTravelRequestExtractor
+    MalformedExtractionError                     (safe rejection of bad model output)
 """
 
 from app.services.ai.base import AIResponse, AIClient, ConnectivityResult
+from app.services.ai.extraction import (
+    MalformedExtractionError,
+    MockTravelRequestExtractor,
+    QwenTravelRequestExtractor,
+    TravelRequestExtractor,
+    build_extractor,
+    get_extractor,
+)
 from app.services.ai.factory import build_ai_client, get_ai_client
 from app.services.ai.mock_client import MockAIClient
 from app.services.ai.qwen_client import QwenClient
@@ -26,4 +42,10 @@ __all__ = [
     "QwenClient",
     "build_ai_client",
     "get_ai_client",
+    "MalformedExtractionError",
+    "MockTravelRequestExtractor",
+    "QwenTravelRequestExtractor",
+    "TravelRequestExtractor",
+    "build_extractor",
+    "get_extractor",
 ]

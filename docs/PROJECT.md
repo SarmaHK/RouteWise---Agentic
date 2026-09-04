@@ -20,7 +20,7 @@
 | **Track** | Hospitality & Tourism |
 | **Team size** | 3 members (3 workstreams) |
 | **Reasoning engine** | Qwen (Alibaba Cloud Model Studio) |
-| **Implementation sequencing** | Workstream A built first (phase A1 done); B & C documented, built to the same interfaces |
+| **Implementation sequencing** | Workstream A built first (phases A1–A2 done); B & C documented, built to the same interfaces |
 
 ---
 
@@ -215,13 +215,26 @@ Full definitions + scoring model: [`AGENT_SPEC.md` §8–10](AGENT_SPEC.md).
   - **Frontend (React + Vite + TypeScript):** app shell, design tokens/global styles, and a
     centralized `services/api` client (the only backend caller).
   - Frontend ↔ backend communication is **verified end to end** (health + the plan stub).
-- **No application *features* yet (by design).** No agent logic, travel-request understanding,
-  tool calling, orchestration, route scoring/decision engine, ML, database, GTFS, automation, or
-  real UI components are built during A1 — those belong to A2+ / Workstream B / Workstream C.
-- **Honesty:** Qwen connectivity is **not** claimed. With no API key configured the backend uses
-  the mock AI client (see [`AGENT_SPEC.md` §15](AGENT_SPEC.md)).
-- **Next (when instructed):** Workstream A phase **A2 — Travel Request Understanding**; B and C
-  proceed against the agreed interfaces.
+- **Phase A2 — Travel Request Understanding: COMPLETE.** `POST /api/route/plan` now **understands**
+  a natural-language request:
+  - **Extraction:** NL → Qwen structured extraction → Pydantic validation → a normalized
+    **`TravelRequest`** (origin, destination, budget+currency, luggage, walking, times,
+    preferences), reusing the existing AI abstraction (no second Qwen client).
+  - **Mock fallback:** with no API key a **deterministic offline extractor** runs and is honestly
+    labelled `extraction_source: "mock"`; with a key, real Qwen is used and malformed output is
+    rejected safely (`502`), never silently accepted.
+  - **Clarification:** missing hard constraints (origin/destination) set `clarification_required`
+    with a question — never fabricated.
+  - **Scope:** understanding **only** — status `UNDERSTANDING`, no route/search/score (those are A3+).
+  - **Frontend:** a minimal travel-request input + parsed-`TravelRequest` display + clarification
+    state, using design tokens only. Backend tests cover the 15 required scenarios.
+- **No route-planning features yet (by design).** No orchestration, tool calling, route
+  scoring/decision engine, ML, database, GTFS, automation, or real UI components are built during
+  A2 — those belong to A3+ / Workstream B / Workstream C.
+- **Honesty:** real Qwen connectivity is **not** claimed unless a key is configured; with no key the
+  backend uses the mock extractor/client (see [`AGENT_SPEC.md` §15](AGENT_SPEC.md)).
+- **Next (when instructed):** Workstream A phase **A3 — Agent Architecture**; B and C proceed
+  against the agreed interfaces.
 
 ---
 
@@ -230,7 +243,7 @@ Full definitions + scoring model: [`AGENT_SPEC.md` §8–10](AGENT_SPEC.md).
 | Phase | Name | Focus |
 |-------|------|-------|
 | **A1** | **Project Foundation** ✅ | Docs, design system, tokens, architecture, contracts **+ a working foundation scaffold (FastAPI app + React shell + AI-service abstraction + tests)**. |
-| A2 | Travel Request Understanding | NLU: request → structured intent + constraints. |
+| **A2** | **Travel Request Understanding** ✅ | NLU: request → validated `TravelRequest` + constraints (extraction only; no route planning). |
 | A3 | Agent Architecture | Agent state model, orchestration skeleton. |
 | A4 | Agent Tool System | Tool definitions + mock implementations. |
 | A5 | Tool-Calling Orchestrator | Qwen tool-calling loop (decide → call → observe). |
