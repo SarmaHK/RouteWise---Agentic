@@ -82,22 +82,34 @@ class MockRouteSearchTool(Tool):
         departure_time = kwargs.get("departure_time")
         preferences = kwargs.get("preferences")
 
-        # 1. First check deterministic mock provider for demo corridor test compatibility
-        candidates = self._provider.candidates_for(origin, destination)
+        from app.config import get_settings
+        transit_intel = getattr(get_settings(), "enable_transit_intelligence", False)
 
-        # 2. If not a hardcoded fixture, query the spatial transit graph across Sri Lanka
-        if not candidates and origin and destination:
+        if transit_intel and origin and destination:
             candidates = self._graph.find_candidates(
                 origin,
                 destination,
                 departure_time=departure_time,
                 preferences=preferences,
             )
+            data_source = DataSource.simulated
+            status = ToolStatus.ok
+        else:
+            candidates = self._provider.candidates_for(origin, destination)
+            if not candidates and origin and destination:
+                candidates = self._graph.find_candidates(
+                    origin,
+                    destination,
+                    departure_time=departure_time,
+                    preferences=preferences,
+                )
+            data_source = DataSource.mock
+            status = ToolStatus.mock_data
 
         if not candidates:
             return ToolResult(
-                status=ToolStatus.mock_data,
-                data_source=DataSource.mock,
+                status=status,
+                data_source=data_source,
                 data=[],
                 message=f"No candidate transit routes found for '{origin}' → '{destination}'.",
                 meta={"corridor_known": False},
@@ -105,8 +117,8 @@ class MockRouteSearchTool(Tool):
             )
 
         return ToolResult(
-            status=ToolStatus.mock_data,
-            data_source=DataSource.mock,
+            status=status,
+            data_source=data_source,
             data=candidates,
             message=f"Returned {len(candidates)} candidate route(s) for '{origin}' → '{destination}'.",
             meta={"corridor_known": True, "count": len(candidates)},

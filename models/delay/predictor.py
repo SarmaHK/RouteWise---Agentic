@@ -75,12 +75,14 @@ class DelayPredictor:
                 t_up = entity.get("trip_update", {})
                 route_id = t_up.get("trip", {}).get("route_id")
                 trip_id = t_up.get("trip", {}).get("trip_id")
-                key = route_id or trip_id
-                if key:
-                    cached[key] = {
-                        "delay_minutes": float(t_up.get("delay_minutes", 0.0)),
-                        "delay_risk": t_up.get("delay_risk", "low"),
-                    }
+                entry = {
+                    "delay_minutes": float(t_up.get("delay_minutes", 0.0)),
+                    "delay_risk": t_up.get("delay_risk", "low"),
+                }
+                if route_id:
+                    cached[route_id.lower()] = entry
+                if trip_id:
+                    cached[trip_id.lower()] = entry
             return cached
         except Exception:
             return {}
@@ -106,12 +108,32 @@ class DelayPredictor:
         rid = (route_id or "").strip()
         rid_lower = rid.lower()
 
+        # Route aliases mapping candidate codes to GTFS entities
+        aliases_map = {
+            "r1": ["trip_train_mainline_1005", "route_train_mainline_colombo_badulla", "mainline"],
+            "r2": ["trip_bus_colombo_ella_99", "route_bus_colombo_ella_direct"],
+            "r3": ["trip_train_kandy_ella_1126", "route_train_kandy_ella"],
+            "c1": ["trip_train_colombo_kandy_1029", "route_train_colombo_kandy"],
+            "c2": ["trip_bus_colombo_kandy_01", "route_bus_colombo_kandy"],
+            "k1": ["trip_train_kandy_ella_1126"],
+            "k2": ["trip_bus_kandy_ella_47"],
+        }
+        search_keys = [rid_lower] + aliases_map.get(rid_lower, [])
+
         # Check for real-time disruption spike in feed
-        for feed_key, feed_val in self._feed_cache.items():
-            if rid_lower in feed_key.lower() or feed_key.lower() in rid_lower:
+        for key in search_keys:
+            if key in self._feed_cache:
+                feed_val = self._feed_cache[key]
                 d_min = float(feed_val.get("delay_minutes", 0.0))
                 d_risk = bucket_delay(d_min)
                 return d_risk, round(d_min, 1)
+
+        for feed_key, feed_val in self._feed_cache.items():
+            for sk in search_keys:
+                if sk in feed_key or feed_key in sk:
+                    d_min = float(feed_val.get("delay_minutes", 0.0))
+                    d_risk = bucket_delay(d_min)
+                    return d_risk, round(d_min, 1)
 
         # Build sequence for LSTM forward pass
         now_dt = at_time or datetime.now()
