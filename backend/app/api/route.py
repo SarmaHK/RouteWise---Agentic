@@ -44,6 +44,7 @@ def plan_route(
     request: PlanRequest,
     extractor: TravelRequestExtractor = Depends(get_extractor),
     agent: RouteAgent = Depends(get_agent),
+    settings: Optional[Any] = None,
 ) -> PlanResponse:
     """Understand the request (A2), then let the agent decide a route (A3).
 
@@ -65,11 +66,24 @@ def plan_route(
 
     # The agent owns the state machine, tool calls, decision, and action trace (A3 brief §12).
     context = agent.run(travel_request)
+
+    legs = context.legs
+    if not legs and context.recommendation is not None:
+        from app.config import get_settings
+        active_settings = settings or get_settings()
+        if getattr(active_settings, "enable_transit_intelligence", False):
+            from app.tools.registry import build_tools
+            tools = build_tools(active_settings)
+            details_res = tools.call("get_route_details", route_id=context.recommendation.id)
+            if details_res.success and isinstance(details_res.data, dict):
+                legs = details_res.data.get("legs", [])
+                context.legs = legs
+
     return PlanResponse(
         status=context.state,
         request=context.request,
         recommendation=context.recommendation,
-        legs=context.legs,
+        legs=legs,
         alternatives=context.alternatives,
         agent_actions=context.actions,
         reasoning=context.reasoning,

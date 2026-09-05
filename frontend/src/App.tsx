@@ -148,6 +148,7 @@ export default function App() {
   const alternatives = data?.alternatives ?? [];
   const actions = data?.agent_actions ?? [];
   const reasoning = data?.reasoning ?? null;
+  const legs = data?.legs ?? [];
 
   const rows: { label: string; value: string | null }[] = request
     ? [
@@ -425,6 +426,33 @@ export default function App() {
                           <li key={reason}>{reason}</li>
                         ))}
                       </ul>
+                    </div>
+                  )}
+
+                  {legs.length > 0 && (
+                    <div className="route-card__legs">
+                      <h4 className="route-card__subtitle">Transit Legs (Route Details)</h4>
+                      <ol className="legs-list">
+                        {legs.map((leg, idx) => (
+                          <li key={leg.id || idx} className="leg-item">
+                            <span className="tag">{leg.mode}</span>
+                            <span className="leg-endpoints rw-mono">
+                              {leg.from} → {leg.to}
+                            </span>
+                            {leg.duration_min != null && (
+                              <span className="leg-metric">{Math.round(leg.duration_min)} min</span>
+                            )}
+                            {leg.fare_lkr != null && (
+                              <span className="leg-metric rw-mono">{formatLkr(leg.fare_lkr)}</span>
+                            )}
+                            {leg.delay_risk && (
+                              <span className="tag tag--inline" data-risk={leg.delay_risk}>
+                                {leg.delay_risk} risk
+                              </span>
+                            )}
+                          </li>
+                        ))}
+                      </ol>
                     </div>
                   )}
 

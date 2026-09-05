@@ -1,0 +1,156 @@
+{
+  "header": {
+    "gtfs_realtime_version": "2.0",
+    "incrementality": "FULL_DATASET",
+    "timestamp": "2026-09-05T08:00:00+05:30",
+    "feed_source": "RouteWise Simulated GTFS-RT / Sri Lanka Transit Intelligence"
+  },
+  "entity": [
+    {
+      "id": "rt_trip_train_mainline_exp_1",
+      "trip_update": {
+        "trip": {
+          "trip_id": "trip_train_mainline_1005",
+          "route_id": "route_train_mainline_colombo_badulla",
+          "start_time": "05:55:00",
+          "start_date": "20260905"
+        },
+        "stop_time_update": [
+          {
+            "stop_sequence": 1,
+            "stop_id": "station_colombo_fort",
+            "departure": { "delay": 0 }
+          },
+          {
+            "stop_sequence": 2,
+            "stop_id": "station_peradeniya",
+            "arrival": { "delay": 300 }
+          },
+          {
+            "stop_sequence": 3,
+            "stop_id": "station_hatton",
+            "arrival": { "delay": 480 }
+          },
+          {
+            "stop_sequence": 4,
+            "stop_id": "station_nanu_oya",
+            "arrival": { "delay": 600 }
+          },
+          {
+            "stop_sequence": 5,
+            "stop_id": "station_ella",
+            "arrival": { "delay": 600 }
+          }
+        ],
+        "delay_minutes": 10.0,
+        "delay_risk": "low"
+      }
+    },
+    {
+      "id": "rt_trip_bus_colombo_ella_direct",
+      "trip_update": {
+        "trip": {
+          "trip_id": "trip_bus_colombo_ella_99",
+          "route_id": "route_bus_colombo_ella_direct",
+          "start_time": "06:30:00",
+          "start_date": "20260905"
+        },
+        "stop_time_update": [
+          {
+            "stop_sequence": 1,
+            "stop_id": "station_colombo_fort_bus",
+            "departure": { "delay": 0 }
+          },
+          {
+            "stop_sequence": 2,
+            "stop_id": "station_ratnapura",
+            "arrival": { "delay": 900 }
+          },
+          {
+            "stop_sequence": 3,
+            "stop_id": "station_ella_bus_junction",
+            "arrival": { "delay": 1800 }
+          }
+        ],
+        "delay_minutes": 30.0,
+        "delay_risk": "moderate"
+      },
+      "congestion_level": "CONGESTED",
+      "alert": {
+        "cause": "ACCIDENT",
+        "effect": "SIGNIFICANT_DELAYS",
+        "header_text": "Heavy congestion on A4 highway between Pelmadulla and Beragala."
+      }
+    },
+    {
+      "id": "rt_trip_train_kandy_ella_scenic",
+      "trip_update": {
+        "trip": {
+          "trip_id": "trip_train_kandy_ella_1126",
+          "route_id": "route_train_kandy_ella",
+          "start_time": "08:47:00",
+          "start_date": "20260905"
+        },
+        "delay_minutes": 8.0,
+        "delay_risk": "low"
+      }
+    },
+    {
+      "id": "rt_trip_bus_kandy_ella_express",
+      "trip_update": {
+        "trip": {
+          "trip_id": "trip_bus_kandy_ella_47",
+          "route_id": "route_bus_kandy_ella",
+          "start_time": "07:15:00",
+          "start_date": "20260905"
+        },
+        "delay_minutes": 25.0,
+        "delay_risk": "moderate"
+      }
+    },
+    {
+      "id": "rt_trip_train_colombo_kandy_ic",
+      "trip_update": {
+        "trip": {
+          "trip_id": "trip_train_colombo_kandy_1029",
+          "route_id": "route_train_colombo_kandy",
+          "start_time": "07:00:00",
+          "start_date": "20260905"
+        },
+        "delay_minutes": 5.0,
+        "delay_risk": "low"
+      }
+    },
+    {
+      "id": "rt_trip_bus_colombo_kandy_exp",
+      "trip_update": {
+        "trip": {
+          "trip_id": "trip_bus_colombo_kandy_1",
+          "route_id": "route_bus_colombo_kandy",
+          "start_time": "06:45:00",
+          "start_date": "20260905"
+        },
+        "delay_minutes": 20.0,
+        "delay_risk": "moderate"
+      }
+    },
+    {
+      "id": "rt_disruption_spiked_train_ella",
+      "trip_update": {
+        "trip": {
+          "trip_id": "trip_train_mainline_1005_disrupted",
+          "route_id": "route_train_mainline_colombo_badulla",
+          "start_time": "05:55:00",
+          "start_date": "20260905"
+        },
+        "delay_minutes": 55.0,
+        "delay_risk": "high"
+      },
+      "alert": {
+        "cause": "WEATHER",
+        "effect": "SIGNIFICANT_DELAYS",
+        "header_text": "Landslide clearance operation between Hatton and Kotagala. Speed restriction 10 km/h."
+      }
+    }
+  ]
+}
