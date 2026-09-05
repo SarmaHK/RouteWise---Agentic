@@ -158,6 +158,28 @@ class Leg(BaseModel):
     data_source: DataSource = DataSource.mock
 
 
+class ConstraintViolation(BaseModel):
+    """A single structured hard-constraint failure (A6 §5).
+
+    Produced deterministically by the decision engine when a candidate breaks a hard constraint
+    (origin/destination compatibility, budget ceiling, arrival deadline, or an explicitly
+    ``unavailable`` service). Surfaced on the :class:`Recommendation` so the UI can explain *why*
+    a route was excluded instead of silently dropping it (A6 §5/§11). ``type`` is a stable
+    uppercase code; ``message`` is concise and grounded in the actual candidate/request values
+    (A6 §14) — never a fabricated fact.
+    """
+
+    type: str = Field(
+        description=(
+            "Stable violation code: ORIGIN | DESTINATION | BUDGET | ARRIVAL_DEADLINE | "
+            "AVAILABILITY."
+        )
+    )
+    message: str = Field(
+        description="Concise, grounded human explanation of the failure (A6 §14)."
+    )
+
+
 class Recommendation(BaseModel):
     """A recommended (or alternative) route (API_CONTRACTS §3).
 
@@ -165,6 +187,12 @@ class Recommendation(BaseModel):
     reason; ``reasons`` is the concise, observable list of decision factors (A3 brief §8/§14.6,
     additive per API_CONTRACTS §9) — never hidden chain-of-thought. ``trade_offs`` explains why an
     alternative ranked below the recommendation (AGENT_SPEC §11). Every figure is mock in A3.
+
+    **A6** refines the decision engine and adds four **additive, optional** route-comparison
+    fields (A6 §5/§11/§24) — ``rank`` (1-based among *valid* candidates), ``valid`` (passed every
+    hard constraint), ``strengths`` (grounded ✓ factors) and ``constraint_violations`` (structured
+    ✗ hard-constraint failures). All default to ``None``/empty, so the A3 contract is preserved and
+    older clients are unaffected.
     """
 
     id: str
@@ -179,6 +207,23 @@ class Recommendation(BaseModel):
     rationale: Optional[str] = None
     reasons: list[str] = Field(default_factory=list)
     trade_offs: list[str] = Field(default_factory=list)
+    # --- A6 additive route-comparison fields (all optional/defaulted → A3 contract intact) ---
+    rank: Optional[int] = Field(
+        default=None,
+        description="1-based rank among VALID candidates (A6); None when excluded/invalid.",
+    )
+    valid: Optional[bool] = Field(
+        default=None,
+        description="True when every hard constraint passed (A6); False when excluded.",
+    )
+    strengths: list[str] = Field(
+        default_factory=list,
+        description="Major grounded strengths for route comparison (A6 §11).",
+    )
+    constraint_violations: list[ConstraintViolation] = Field(
+        default_factory=list,
+        description="Structured hard-constraint failures (A6 §5); empty when valid.",
+    )
     is_recommended: bool = False
     data_source: DataSource = DataSource.mock
 

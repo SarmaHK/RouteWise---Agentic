@@ -222,7 +222,40 @@ refined in later phases — **update this doc when that happens**.
   "rationale": "Meets your LKR 2,000 budget, minimizes walking with a heavy bag, and avoids a risky connection.",
   "reasons": ["Within your LKR 2,000 budget.", "Suitable for heavy luggage.", "Least walking of the viable routes."],
   "trade_offs": ["Slightly longer than the fastest option"],
+  "rank": 1,
+  "valid": true,
+  "strengths": ["Within your LKR 2,000 budget.", "Least walking (≈0.3 km).", "Low delay risk."],
+  "constraint_violations": [],
   "is_recommended": true,
+  "data_source": "mock"
+}
+```
+
+An **excluded** candidate, kept as a clearly-marked alternative instead of being silently dropped
+(**A6** — `score`/`rank` are `null`, `valid` is `false`, and every hard-constraint failure is
+structured):
+
+```json
+{
+  "id": "route_003",
+  "summary": "Tuk + train + connecting bus — fastest, but 2 transfers and over budget",
+  "total_duration_min": 330,
+  "total_fare_lkr": 2350,
+  "transfers": 2,
+  "walking_km": 0.4,
+  "within_budget": false,
+  "delay_risk": "low",
+  "score": null,
+  "rationale": "Over budget (LKR 2,350 > LKR 2,000).",
+  "reasons": [],
+  "trade_offs": ["Over budget (LKR 2,350 > LKR 2,000)."],
+  "rank": null,
+  "valid": false,
+  "strengths": [],
+  "constraint_violations": [
+    { "type": "BUDGET", "message": "Over budget (LKR 2,350 > LKR 2,000)." }
+  ],
+  "is_recommended": false,
   "data_source": "mock"
 }
 ```
@@ -253,9 +286,13 @@ refined in later phases — **update this doc when that happens**.
 | `fare_lkr` / `total_fare_lkr` | number | Money is **always LKR**, numeric. Rendered in **mono**. |
 | `*_min` / `*_km` | number | Durations in **minutes**, distances in **km** — explicit units in names. |
 | `delay_risk` | enum | `none, low, moderate, high`. Maps to `DelayBadge` tones. |
-| `within_budget` | boolean | Hard-constraint check result; drives success/error styling. |
-| `score` | number | 0–1 normalized ranking from the decision engine (**A3** deterministic scoring; refined with real data in A6). |
-| `rationale` / `reasons` / `trade_offs` | string / array | Human explanation (feeds `ReasoningSummary`). `rationale` = headline reason; **`reasons`** (added in A3) = the concise list of observable decision factors; `trade_offs` = why an alternative ranked below the recommendation. |
+| `within_budget` | boolean | Hard-constraint check result; drives success/error styling. `null` when no budget was stated **or** the fare is unknown (never fabricated). |
+| `score` | number | 0–1 normalized ranking from the decision engine (**A3** deterministic scoring, **refined in A6**: robust normalization + preference-scaled weights + delay-risk **and** known-delay-minutes penalty). `null` on an excluded candidate. |
+| `rationale` / `reasons` / `trade_offs` | string / array | Human explanation (feeds `ReasoningSummary`). `rationale` = headline reason; **`reasons`** (added in A3) = the concise list of observable decision factors; `trade_offs` = why an alternative ranked below the recommendation. Every entry is grounded in a real candidate/request value. |
+| `rank` | number? | **A6 (additive):** 1-based rank among **valid** candidates; `null` when the candidate was excluded. |
+| `valid` | boolean? | **A6 (additive):** `true` when every hard constraint passed, `false` when excluded. Drives the excluded-card treatment in the UI. |
+| `strengths` | string[] | **A6 (additive):** the grounded ✓ factors for route comparison (within budget / least walking / fastest / cheapest / fewest transfers / low delay risk), max 4; empty on an excluded card. |
+| `constraint_violations` | object[] | **A6 (additive):** structured hard-constraint failures — `{ type, message }` where `type` ∈ `ORIGIN \| DESTINATION \| BUDGET \| ARRIVAL_DEADLINE \| AVAILABILITY` and `message` is a concise grounded explanation. Ordered by fixed precedence; empty when `valid` is `true`. |
 | `data_source` | enum | `mock` \| `simulated` \| `live`. **Honesty flag** — MVP is `mock`/`simulated`. |
 
 ---
@@ -417,6 +454,15 @@ This document is the contract. Once the frontend or backend consumes a shape:
     `POST /api/route/plan` path is unchanged, so no consumer breaks. The only behavioral change is
     that `agent_actions[]` may now contain **multiple** model-selected tool calls (it was already an
     ordered array).
+  - **A6 (decision-engine refinement):** added a new `ConstraintViolation` object
+    (`{ type, message }`) and four fields to `Recommendation` — `rank` (number?), `valid`
+    (boolean?), `strengths` (string[]) and `constraint_violations` (ConstraintViolation[]). All are
+    **optional/defaulted**, so the A3 recommendation shape and the `POST /api/route/plan`
+    request/response contract are unchanged and no consumer breaks; the frontend mirrors them in
+    `src/types/api.ts`. No new endpoint was added. Behaviorally, `alternatives[]` is now ordered
+    **valid runners-up first (by `rank`), then excluded candidates**, and an excluded card carries
+    `score: null` / `rank: null` / `valid: false` plus its structured violations (previously only a
+    free-text `trade_offs` entry).
 - **Breaking** changes require a proposal + version bump (§1.6) and updates to consumers.
 - Never change a contract silently in code without updating this file in the same change.
 

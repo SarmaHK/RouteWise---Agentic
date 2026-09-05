@@ -88,10 +88,12 @@ If you (with approval) change architecture, contracts, components, or the design
 update the corresponding doc **in the same change**. Docs must never drift from reality.
 
 ### 18. Do not implement future phases unless explicitly instructed.
-Stay in the **current phase** (see [`PROJECT.md` §13–14](PROJECT.md)). Don't auto-advance. The A5
-bounded multi-step **Qwen tool-calling loop** is now built on the A4 tool seam; don't start A6+
-decision-engine refinement, ML, PostGIS, GTFS, automation, booking, or Travel Pass generation unless
-told to.
+Stay in the **current phase** (see [`PROJECT.md` §13–14](PROJECT.md)). Don't auto-advance. The A6
+**constraint-aware decision-engine refinement** is now built on the A3 engine (structured violations,
+defensive candidates, robust normalization, delay-aware scoring, grounded explanations); don't start
+A7+ mock-intelligence integration, replanning/execution, agent-activity UI, ML, PostGIS, GTFS,
+automation, booking, or Travel Pass generation unless told to. Phase A6 also **must not** rewrite the
+A5 tool-calling loop or the A4 tool seam.
 
 ### 19. Do not claim functionality works unless verified.
 Honest reporting only. Distinguish "implemented and tested" from "written but not run" from
@@ -110,7 +112,7 @@ thing that works cleanly and is documented — not a speculative framework.
   ([`WORKSTREAMS.md`](WORKSTREAMS.md)) — this is **not** an A-only project.
 - **Implementation is sequenced A-first.** The active build workstream is **A — AI Agent &
   Decision Engine**; B and C are built later by their owners **to the same interfaces**.
-- **Current phase: A5 — Tool-Calling Orchestrator.** Do not auto-continue into A6.
+- **Current phase: A6 — Route Decision Engine (decision refinement & constraint-aware route optimization).** Do not auto-continue into A7.
 - You may create **clean interfaces / mocks / contracts** where a workstream needs a boundary —
   but **no real B/C functionality** until that workstream is explicitly started.
 

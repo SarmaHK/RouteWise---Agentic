@@ -6,8 +6,9 @@
 > agent → tools → transit intelligence/ML → automation → data/external services.
 >
 > **Status:** **A1 (foundation), A2 (request understanding), A3 (agent orchestration & decision),
-> A4 (tool system & capability execution), and A5 (multi-step Qwen tool-calling orchestrator) are
-> implemented.** A FastAPI backend (config, logging, CORS, `GET /health`, structured errors) now runs
+> A4 (tool system & capability execution), A5 (multi-step Qwen tool-calling orchestrator), and A6
+> (constraint-aware decision-engine refinement) are implemented.** A FastAPI backend (config, logging,
+> CORS, `GET /health`, structured errors) now runs
 > a real agent layer: `POST /api/route/plan` extracts a validated `TravelRequest` (A2 — Qwen or a
 > deterministic mock), then `app/agent/` drives the canonical state machine and `app/agent/decision.py`
 > scores **mock** candidates from `app/tools/` into a recommendation, alternatives, concise reasons,
@@ -20,11 +21,19 @@
 > **bounded multi-step loop** — Qwen selects each available tool, the app validates + executes it via
 > the registry/executor and feeds the structured result back, repeating until a final answer or
 > `MAX_AGENT_ITERATIONS` (default 8), with duplicate-call protection and a decision **grounded** in the
-> A3 engine. The React + Vite + TypeScript frontend (app shell + a centralized `services/api` client)
+> A3 engine. **A6 refines that decision engine itself** (`app/agent/decision.py` + additive
+> `schemas/route.py` fields): a deterministic prepare → hard-constraint filter (structured
+> `constraint_violations[]`) → min–max normalize → preference-weighted score (delay risk **and** known
+> delay minutes) → deterministic rank → grounded explanation pipeline, with impossible candidate values
+> treated as unknown and recorded in `assumptions`. It consumes A5's `context.candidates` unchanged —
+> **no** orchestrator or tool-seam change. The React + Vite + TypeScript frontend (app shell + a
+> centralized `services/api` client)
 > shows the parsed request, the agent-progress timeline (per-tool status/source, and — A5 — any
-> `error_code`), and the mock decision, with the design tokens (`frontend/src/styles/`) as the visual
+> `error_code`), and the mock decision — and, since **A6**, each route card's `rank` / `valid` /
+> `strengths` / structured violations, using the existing design tokens
+> (`frontend/src/styles/`) as the visual
 > source of truth. Everything else here (real tools, ML, automation, execution, the full component UI)
-> remains the **agreed plan** for A6+. All route data is **mock**. Keep it **suitable for a hackathon
+> remains the **agreed plan** for A7+. All route data is **mock**. Keep it **suitable for a hackathon
 > MVP** — simple, demonstrable, mock-backed.
 
 ---
@@ -207,9 +216,11 @@ recorded here and in `frontend/README.md`.
 foundation files**, **A2 added request understanding** (`schemas/travel_request.py`,
 `services/ai/extraction.py`), **A3 added the agent + tools** (`agent/`, `tools/`,
 `schemas/candidate.py`), **A4 refined the tool seam into a capability-execution system**
-(`tools/base.py`, `tools/executor.py`, `tools/registry.py`), and **A5 added the Qwen tool-calling
+(`tools/base.py`, `tools/executor.py`, `tools/registry.py`), **A5 added the Qwen tool-calling
 adapter + multi-step loop** (`services/ai/agent.py`; `agent/orchestrator.py` now runs the bounded
-loop; `config.py` gained `MAX_AGENT_ITERATIONS`; `schemas/route.py` gained `ToolCall.error_code`) (✅):
+loop; `config.py` gained `MAX_AGENT_ITERATIONS`; `schemas/route.py` gained `ToolCall.error_code`), and
+**A6 refined the decision engine** (`agent/decision.py`; `schemas/route.py` gained `ConstraintViolation`
+and the additive `Recommendation.rank` / `.valid` / `.strengths` / `.constraint_violations`) (✅):
 
 ```
 backend/
@@ -218,11 +229,11 @@ backend/
 │   ├── config.py          # ✅ settings/env (API keys via env only — never committed)
 │   ├── logging_config.py  # ✅ logging foundation
 │   ├── api/               # ✅ health.py · route.py (A3 extraction → A5 agent loop → decision) · router.py  (agent status/stream: A8/A9)
-│   ├── schemas/           # ✅ Pydantic models mirroring API_CONTRACTS.md (A2 travel_request.py · A3 candidate.py · A5 route.py: ToolCall.error_code)
+│   ├── schemas/           # ✅ Pydantic models mirroring API_CONTRACTS.md (A2 travel_request.py · A3 candidate.py · A5 route.py: ToolCall.error_code · A6 route.py: ConstraintViolation + Recommendation.rank/valid/strengths/constraint_violations)
 │   ├── services/ai/       # ✅ AI abstraction (base · qwen_client · mock_client · factory) + A2 extraction.py + A5 agent.py (Qwen tool-calling planner)
-│   ├── agent/             # ✅ A3: state.py (state machine + execution context) · decision.py (scoring) · orchestrator.py (A5 bounded multi-step loop)
+│   ├── agent/             # ✅ A3: state.py (state machine + execution context) · decision.py (scoring, refined in A6) · orchestrator.py (A5 bounded multi-step loop)
 │   └── tools/             # ✅ A3/A4: base.py (Tool ABC + ToolResult) · executor.py (A4 safe execution) · candidates.py (mock provider) · capabilities.py · registry.py (A→B/C seam)
-├── tests/                 # ✅ foundation + A2 extraction + A3 state/decision/agent/API + A4 tool contract/registry/execution/stub/integration + A5 qwen-tool-calling/agent-loop tests
+├── tests/                 # ✅ foundation + A2 extraction + A3 state/decision/agent/API + A4 tool contract/registry/execution/stub/integration + A5 qwen-tool-calling/agent-loop + A6 decision-engine (constraints/preferences/normalization/ranking/explanation/edge) tests
 ├── requirements.txt       # ✅ dependencies (requirements.txt chosen over pyproject.toml)
 ├── .env.example           # ✅ config template (never commit .env)
 └── README.md
@@ -251,8 +262,10 @@ UNDERSTAND → REASON → ACT → ADAPT → DELIVER
 
 Conceptual internal pipeline (built in phases A2–A7; **[Understanding] ✅ A2**,
 **[Planning]/[Tool calling]/[Evaluation]/[Decision] ✅ A3 — deterministic, over mock data**,
-**[Tool calling] hardened in ✅ A4 — registry → executor → structured `ToolResult`**, and
-**[Planning]+[Tool calling] made model-driven in ✅ A5 — a bounded multi-step Qwen loop**):
+**[Tool calling] hardened in ✅ A4 — registry → executor → structured `ToolResult`**,
+**[Planning]+[Tool calling] made model-driven in ✅ A5 — a bounded multi-step Qwen loop**, and
+**[Evaluation]+[Decision] refined in ✅ A6 — structured violations, robust normalization, delay-aware
+scoring, deterministic ranking**):
 
 ```
 Travel request (text + structured fields)
@@ -262,9 +275,12 @@ Travel request (text + structured fields)
    → [Tool calling]   ✅ A4/A5: each selected call → registry → executor (validate + timeout + guards)
                         → structured ToolResult fed back to Qwen; search_routes (mock, AVAILABLE);
                         fare/delay/availability/booking = NOT_IMPLEMENTED (never fabricated)
-   → [Evaluation]     ✅ A3: filter hard constraints → score soft prefs → rank (agent/decision.py)
-   → [Decision]       ✅ A3: recommendation + alternatives + concise reasons (grounded in tool data)
-   → [Adaptation]     on disruption → REPLANNING loop back to searching (A6+)
+   → [Evaluation]     ✅ A3, refined ✅ A6: prepare/sanitize defensively → filter hard constraints
+                        (all violations kept, structured) → min–max normalize → weight by soft prefs
+                        → subtract the delay penalty → deterministic rank (agent/decision.py)
+   → [Decision]       ✅ A3, refined ✅ A6: recommendation + ranked alternatives, each with grounded
+                        reasons / strengths / trade_offs / constraint_violations (never fabricated)
+   → [Adaptation]     on disruption → REPLANNING loop back to searching (A7+)
    → [Delivery]       recommendation + explanation + agent_actions (+ Travel Pass data)
 ```
 
@@ -300,12 +316,15 @@ Travel request (text + structured fields)
 11. On disruption → Agent REPLANNING → repeat 5–9 → updated recommendation
 ```
 
-> **A3–A5 scope:** steps **1–7 and 9–10** are implemented over **mock** candidates (extraction →
+> **A3–A6 scope:** steps **1–7 and 9–10** are implemented over **mock** candidates (extraction →
 > planning → deterministic scoring → decision → `agent_actions[]` → frontend). **A5** makes step **5**
 > a **model-driven, multi-step loop**: Qwen selects each tool call, which may revisit SEARCHING (and
-> reach EXECUTING when it picks an action tool). Step **8 (EXECUTING)** and step **11 (REPLANNING)**
+> reach EXECUTING when it picks an action tool). **A6** refines steps **6–7** (evaluation → decision)
+> without touching the loop: every candidate is validated against the hard constraints, normalized,
+> weighted, scored, ranked and explained from its **real** values. Step **8 (EXECUTING)** and step
+> **11 (REPLANNING)**
 > are still **not** truly exercised — `prepare_booking` / `check_availability` and disruption handling
-> are honest `not_implemented` stubs (A6/A7); on the happy path the agent goes
+> are honest `not_implemented` stubs (A7); on the happy path the agent goes
 > **EVALUATING → COMPLETED**.
 
 Agent steps/states are surfaced to the UI as `agent_actions[]` (embedded) and/or streamed —
@@ -317,10 +336,12 @@ the frontend abstracts the mechanism (see §3.3).
 
 - Frontend calls **`POST /api/route/plan`** (the reserved primary endpoint; an honest
   **foundation stub** in A1, a real **mock agent decision** in **A3**, a **model-driven multi-step
-  tool loop** in **A5**, live-data planning in **A9**).
+  tool loop** in **A5**, a **constraint-aware ranked decision** in **A6**, live-data planning in **A9**).
 - Response carries `status` (canonical agent state), `request` (normalized), `recommendation`,
   `legs[]`, `alternatives[]`, `agent_actions[]`, and `reasoning`. In A3 `legs[]` is empty and all
-  route figures are **mock**; `recommendation`/`alternatives`/`agent_actions` are populated.
+  route figures are **mock**; `recommendation`/`alternatives`/`agent_actions` are populated. **A6** adds
+  four **additive** recommendation fields (`rank`, `valid`, `strengths`, `constraint_violations`) — no
+  new endpoint, no breaking change.
 - Optional (later) **`GET /api/agent/status`** and **`GET /api/agent/stream`** for live agent
   activity — mechanism **TBD** in A8/A9 (**A5** keeps the whole loop in-request: a single response
   with the full `agent_actions[]` trace, no streaming).

@@ -11,8 +11,11 @@
 > decision → explanation → alternatives, with a MOCK tag), **A4 hardens the tool seam behind step 5**
 > (a real registry + executor; the tool trace shows each tool's availability + data source), and **A5
 > makes step 5 autonomous + multi-step** (Qwen *selects* each tool call in a bounded loop; the trace
-> can now show several model-chosen calls, each with its status/source and any `error_code`). **Step
-> 11 (disruption/re-planning) and step 12 (Travel Pass) are not built** (A6+ / Workstream C). All
+> can now show several model-chosen calls, each with its status/source and any `error_code`), and **A6
+> deepens steps 7–10** (each route card now carries a 1-based `rank`, a `valid` flag, grounded
+> `strengths`, and structured `constraint_violations`, so an excluded route is *shown with its reason*
+> rather than silently dropped). **Step
+> 11 (disruption/re-planning) and step 12 (Travel Pass) are not built** (A7+ / Workstream C). All
 > route data is **mock**.
 
 ---
@@ -56,10 +59,10 @@ The demo must prove the Agent can **reason**, not recite:
 | 4 | **Planning** | "Planning your journey…" — agent outlines which tools it will call. | PLANNING | `AgentStep` |
 | 5 | **Tool calls** | Expandable **mono** tool traces — **A5:** the sequence is **model-selected** (Qwen picks each call in a bounded loop), e.g. `search_routes(...)`, then optionally `get_fare_estimate(...)`/`get_delay_prediction(...)` (currently honest `NOT_IMPLEMENTED` stubs). | SEARCHING (→ EXECUTING for an action tool) | `AgentStep` (tool trace) |
 | 6 | **Transit intelligence** | Candidate routes stream in with fares + delay risk (labeled **simulated**). | SEARCHING | `RouteCard`s |
-| 7 | **Route evaluation** | "Comparing 3 routes…" — scores/trade-offs shown; over-budget routes filtered out. | EVALUATING | `RouteCard`, `FareDisplay`, `DelayBadge` |
-| 8 | **Decision** | Recommended route highlighted (primary accent + "Recommended"). | EVALUATING → EXECUTING | `RouteCard` (recommended) |
-| 9 | **Explanation** | `ReasoningSummary`: *"Meets your LKR 2,000 budget, minimizes walking with a heavy bag…"* | COMPLETED | `ReasoningSummary` |
-| 10 | **Alternatives** | 1–2 alternatives with honest trade-offs ("Cheaper but 2 transfers"). | COMPLETED | `RouteCard`s |
+| 7 | **Route evaluation** | "Comparing 3 routes…" — scores/trade-offs shown; over-budget routes filtered out. **A6:** every candidate is validated, normalized and scored deterministically; an excluded route keeps its structured violation (e.g. `BUDGET`) instead of disappearing. | EVALUATING | `RouteCard`, `FareDisplay`, `DelayBadge` |
+| 8 | **Decision** | Recommended route highlighted (primary accent + "Recommended"). **A6:** the winner is the top **valid** candidate by `rank`; with zero valid candidates no route is recommended at all. | EVALUATING → EXECUTING | `RouteCard` (recommended) |
+| 9 | **Explanation** | `ReasoningSummary`: *"Meets your LKR 2,000 budget, minimizes walking with a heavy bag…"* **A6:** reasons and `strengths` quote the candidate's real values only — never a fact that does not exist. | COMPLETED | `ReasoningSummary` |
+| 10 | **Alternatives** | 1–2 alternatives with honest trade-offs ("Cheaper but 2 transfers"). **A6:** valid runners-up first (by `rank`), then excluded candidates (marked `valid: false` + their violations), capped at 3; never fabricated. | COMPLETED | `RouteCard`s |
 | 11 | **Disruption / re-planning** | Inject a delay (see §4.2) → "Connection at risk — re-planning…" → new recommendation + why it changed. | REPLANNING → SEARCHING → EVALUATING → COMPLETED | `AgentActivity`, updated `RouteCard` |
 | 12 | **Final travel output** | Offline-ready **Travel Pass** view (times, legs, refs, QR placeholder). | COMPLETED | `TravelPass` |
 
@@ -67,7 +70,7 @@ The demo must prove the Agent can **reason**, not recite:
 > pass delivery) touch **Workstream C**. In the demo they are backed by **mocks/simulation**
 > behind the real interfaces (see [`WORKSTREAMS.md`](WORKSTREAMS.md)).
 >
-> **A3/A4/A5 coverage:** steps **1–10** run end-to-end over the deterministic **mock** candidate
+> **A3–A6 coverage:** steps **1–10** run end-to-end over the deterministic **mock** candidate
 > provider — the agent *reasons* (filters hard constraints, scores soft preferences, ranks); it does
 > not recite a hard-coded winner. Step **5** is now a **bounded multi-step Qwen loop** (A5): the model
 > *selects* each tool call, which runs through the A4 seam (registry → executor → structured result).
@@ -75,8 +78,12 @@ The demo must prove the Agent can **reason**, not recite:
 > `search_routes` is `AVAILABLE` on **mock** data, while the fare/delay/availability/booking tools are
 > honest `NOT_IMPLEMENTED` stubs (B/C), so if the model calls them the trace shows their status/source
 > (and `error_code`) without fabricating numbers. The loop is capped at `MAX_AGENT_ITERATIONS`
-> (default 8) and never invents a recommendation on the limit. Steps **11–12** (re-planning, Travel
-> Pass) are **not implemented** yet.
+> (default 8) and never invents a recommendation on the limit. Steps **6–10** are decided by the **A6**
+> engine over those tool-gathered candidates: malformed/duplicate candidates are skipped, impossible
+> values count as unknown (recorded in `assumptions`), features are min–max normalized, `walking_preference`
+> and `luggage` re-weight the score, `delay_risk`/known delay minutes are penalized (**consumed, never
+> predicted**), and the result is ranked with a deterministic tie-break. Steps **11–12** (re-planning,
+> Travel Pass) are **not implemented** yet.
 
 ---
 
@@ -105,6 +112,14 @@ do **not** hard-code the "winner".
   (R2 cheaper/faster). The **agent decides and explains** — the demo shows the reasoning, not a
   pre-baked answer.
 
+  **A6, measured (mock fixtures, deterministic):** with `heavy` + `minimize` the weights become
+  `walking 0.502392 / transfers 0.178628 / duration 0.159490 / fare 0.159490`, and **R1 wins at
+  0.472** over **R2 at 0.408**; R3 is excluded with a structured `BUDGET` violation (LKR 2,350 >
+  LKR 2,000) and is still shown as a marked alternative. Remove the preferences and the *same*
+  candidates select **R2 at 0.610** over R1 at 0.270 — and `heavy` alone (R2 0.544) or `minimize`
+  alone (R2 0.481) also select R2. It is the **combination** that tips the decision, which is exactly
+  the "reasoning, not recitation" proof point.
+
 ### 4.2 Delayed route (delay risk → re-plan)
 
 - **Trigger:** inject a delay on the chosen route's key leg (e.g., train delayed ~40 min) via the
@@ -122,6 +137,9 @@ do **not** hard-code the "winner".
   budget**, and explains the substitution. If nothing fits, it **says so honestly** and suggests
   what to relax (budget/time) — never fakes success.
 - **Shows:** hard-constraint integrity + honest failure handling.
+- **A6:** `availability` is an explicit hard constraint — a candidate is excluded **only** when it is
+  explicitly `unavailable`, and the exclusion carries a structured `AVAILABILITY` violation. The A-phase
+  default is `unknown`, which is **not** treated as a violation (the agent never claims real seats).
 
 ### 4.4 Re-planning (constraint change)
 
@@ -188,5 +206,6 @@ do **not** hard-code the "winner".
 - [ ] Demo is repeatable (deterministic seed) and resilient (fallbacks ready).
 
 > **This is the target all workstreams build toward.** A3 delivers steps 1–10 over mock data, A4
-> hardens the tool execution behind step 5, and A5 makes that step an autonomous multi-step Qwen loop;
-> the full demo (including steps 11–12) completes across A6–A9 + Workstreams B/C.
+> hardens the tool execution behind step 5, A5 makes that step an autonomous multi-step Qwen loop, and
+> A6 deepens the evaluation/decision behind steps 7–10;
+> the full demo (including steps 11–12) completes across A7–A9 + Workstreams B/C.

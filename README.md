@@ -4,7 +4,7 @@
 
 - **Competition:** AI Buildathon 2026
 - **Track:** Hospitality & Tourism
-- **Current phase:** A3 — Agent Orchestration & Decision Engine ✅ (A1 foundation + A2 travel-request understanding + A3 agent state machine, tool abstraction, deterministic **mock** candidate provider, and a transparent decision engine wired into `POST /api/route/plan`; all route data is mock)
+- **Current phase:** A6 — Route Decision Engine ✅ (A1 foundation + A2 travel-request understanding + A3 agent state machine, tool abstraction, deterministic **mock** candidate provider and transparent decision engine + A4 capability-execution tool seam + A5 bounded multi-step Qwen tool-calling loop + A6 constraint-aware decision refinement — structured violations, robust normalization, delay-aware scoring, deterministic ranking — all wired into `POST /api/route/plan`; all route data is mock)
 - **Build sequencing:** Workstream A first; B & C documented now, built later to the same interfaces
 
 > 🤖 **AI agents: read [`AI_CONTEXT.md`](AI_CONTEXT.md) before doing anything.**
@@ -112,10 +112,10 @@ where a boundary is needed now). Mantra: **A decides, B informs, C acts.**
 |-------|------|--------|
 | A1 | Project Foundation | ✅ Complete |
 | A2 | Travel Request Understanding | ✅ Complete |
-| **A3** | **Agent Architecture** | ✅ **Current** |
-| A4 | Agent Tool System | ⏳ |
-| A5 | Tool-Calling Orchestrator | ⏳ |
-| A6 | Route Decision Engine | ⏳ |
+| A3 | Agent Architecture | ✅ Complete |
+| A4 | Agent Tool System | ✅ Complete |
+| A5 | Tool-Calling Orchestrator | ✅ Complete |
+| **A6** | **Route Decision Engine** | ✅ **Current** |
 | A7 | Mock Intelligence Integration | ⏳ |
 | A8 | Agent Experience / UI | ⏳ |
 | A9 | Final API & Agent State | ⏳ |
@@ -203,8 +203,9 @@ alternatives (or a clarification when a hard constraint is missing).
 
 ## Status
 
-**A1 — Project Foundation, A2 — Travel Request Understanding, and A3 — Agent Orchestration &
-Decision Engine are complete.** The documentation is **consolidated into an 8-doc system**
+**A1 — Project Foundation, A2 — Travel Request Understanding, A3 — Agent Orchestration &
+Decision Engine, A4 — Tool System & Capability Execution, A5 — Tool-Calling Orchestrator, and
+A6 — Route Decision Engine are complete.** The documentation is **consolidated into an 8-doc system**
 covering all three workstreams (PROJECT, ARCHITECTURE, DESIGN_SYSTEM, API_CONTRACTS, AGENT_SPEC,
 WORKSTREAMS, DEVELOPMENT_RULES, DEMO), and the machine-readable design tokens live in
 `frontend/src/styles/tokens.css`.
@@ -212,14 +213,22 @@ WORKSTREAMS, DEVELOPMENT_RULES, DEMO), and the machine-readable design tokens li
 The backend (FastAPI) now runs a real agent layer: `POST /api/route/plan` extracts a validated
 `TravelRequest` (A2 — via Qwen when a key is set, else a deterministic mock), then the agent (A3)
 drives the canonical state machine `UNDERSTANDING → PLANNING → SEARCHING → EVALUATING → COMPLETED`,
-calls a **mock** route-search tool, and a **transparent deterministic decision engine** filters hard
-constraints (destination, budget, arrival deadline), ranks soft preferences (walking, luggage,
-departure), and returns a recommendation with concise reasons plus honest alternatives — or stops
-early for clarification. The React + TypeScript shell shows the parsed request, the agent-progress
+calls route tools through a safe capability seam (A4 — registry → executor → structured `ToolResult`,
+with only `search_routes` available on **mock** data), and lets **Qwen select** each tool call inside a
+bounded multi-step loop (A5). A **transparent deterministic decision engine** — refined in **A6** —
+validates hard
+constraints (origin, destination, budget, arrival deadline, availability) into **structured
+violations**, normalizes and preference-weights the survivors (walking, luggage, duration, transfers,
+fare, plus any provided delay data), ranks them with a deterministic tie-break, and returns a
+recommendation with concise grounded reasons plus honest alternatives (each with `rank`, `valid`,
+`strengths`, `trade_offs` and any `constraint_violations`) — or stops
+early for clarification, or reports honestly when nothing fits. The React + TypeScript shell shows the
+parsed request, the agent-progress
 timeline, the mock recommendation, its decision reasons, and alternatives. Backend tests pass and
 the frontend build is verified.
 
-**All route data is MOCK** (Phase A3): no live transit search, ML fare/delay prediction, GTFS,
+**All route data is MOCK** (Phases A3–A6): no live transit search, ML fare/delay prediction, GTFS,
 database, seat availability, booking, disruption monitoring, or Travel Pass — those are later
-phases (A4+) and Workstreams B/C. **Qwen is not used for route selection** (the decision is
-deterministic); with no API key the backend uses the mock extractor and mock AI client.
+phases (A7+) and Workstreams B/C. **Qwen is not used for route selection** (the decision is
+deterministic); with no API key the backend uses the mock extractor, the mock AI client, and the mock
+tool-calling planner.

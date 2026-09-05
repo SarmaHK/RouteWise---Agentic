@@ -454,7 +454,8 @@ export default function App() {
                 </p>
               )}
 
-              {/* Alternatives (§14.7) with honest trade-offs / exclusion reasons (§11). */}
+              {/* Alternatives (§14.7): A6 adds structured route comparison — strengths (✓),
+                  trade-offs (✗), and structured constraint violations for excluded routes (§5/§11/§13). */}
               {alternatives.length > 0 && (
                 <div className="alternatives">
                   <h3 className="alternatives__title">Alternatives</h3>
@@ -477,21 +478,51 @@ export default function App() {
                         ))}
                       </dl>
 
-                      {alt.score == null && (
-                        <p className="route-card__excluded">
-                          Excluded — broke a hard constraint (kept for transparency).
-                        </p>
-                      )}
-
-                      {(alt.trade_offs ?? []).length > 0 && (
+                      {/* A6 §5/§11: an invalid alternative surfaces its STRUCTURED constraint
+                          violations (exactly why it was excluded) — never a silent discard. */}
+                      {alt.valid === false ? (
                         <div className="route-card__tradeoffs">
-                          <h5 className="route-card__subtitle">Trade-offs vs recommendation</h5>
+                          <h5 className="route-card__subtitle">
+                            Excluded — broke a hard constraint
+                          </h5>
                           <ul className="reasons-list">
-                            {(alt.trade_offs ?? []).map((tradeOff) => (
-                              <li key={tradeOff}>{tradeOff}</li>
-                            ))}
+                            {(alt.constraint_violations ?? []).length > 0
+                              ? (alt.constraint_violations ?? []).map((violation) => (
+                                  <li key={`${violation.type}:${violation.message}`}>
+                                    <span className="rw-mono">{violation.type}</span> —{' '}
+                                    {violation.message}
+                                  </li>
+                                ))
+                              : (alt.trade_offs ?? []).map((reason) => (
+                                  <li key={reason}>{reason}</li>
+                                ))}
                           </ul>
                         </div>
+                      ) : (
+                        <>
+                          {/* A6 §11: grounded strengths (✓) for a valid alternative. */}
+                          {(alt.strengths ?? []).length > 0 && (
+                            <div className="route-card__reasons">
+                              <h5 className="route-card__subtitle">Strengths</h5>
+                              <ul className="reasons-list">
+                                {(alt.strengths ?? []).map((strength) => (
+                                  <li key={strength}>{strength}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+
+                          {(alt.trade_offs ?? []).length > 0 && (
+                            <div className="route-card__tradeoffs">
+                              <h5 className="route-card__subtitle">Trade-offs vs recommendation</h5>
+                              <ul className="reasons-list">
+                                {(alt.trade_offs ?? []).map((tradeOff) => (
+                                  <li key={tradeOff}>{tradeOff}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </>
                       )}
                     </article>
                   ))}

@@ -20,7 +20,7 @@
 | **Track** | Hospitality & Tourism |
 | **Team size** | 3 members (3 workstreams) |
 | **Reasoning engine** | Qwen (Alibaba Cloud Model Studio) |
-| **Implementation sequencing** | Workstream A built first (phases A1–A5 done); B & C documented, built to the same interfaces |
+| **Implementation sequencing** | Workstream A built first (phases A1–A6 done); B & C documented, built to the same interfaces |
 
 ---
 
@@ -280,14 +280,38 @@ Full definitions + scoring model: [`AGENT_SPEC.md` §8–10](AGENT_SPEC.md).
   - **Scope:** no real B/C providers, no replanning/execution; all route data still **mock**. Real
     Qwen tool-calling is **MOCK ONLY / NOT VERIFIED** here (no API key in this environment; the two
     live tests skip honestly).
-- **No route-planning features beyond A5's model-driven mock decision (by design).** No
+- **Phase A6 — Route Decision Engine (decision refinement & constraint-aware route optimization):
+  COMPLETE.** The A3 `DecisionEngine` is refined into a focused, deterministic pipeline — the A5
+  tool-calling loop and the A4 tool seam are **unchanged**:
+  - **Hard constraints, structured:** `validate_constraints` returns **every** violation as a
+    `ConstraintViolation` (`type` + grounded `message`) in a fixed precedence (origin → destination →
+    budget → arrival deadline → availability); the first still drives the A3 single-string `constraint`,
+    so a violating candidate is **never** selected **and never silently dropped** — it appears as a
+    clearly-marked `valid: false` alternative.
+  - **Defensive candidates:** malformed objects and duplicate ids are skipped, and impossible values
+    (negative / `NaN` / infinite fare, duration, walking, transfers, delay) are treated as **unknown**
+    and recorded in `assumptions` — never accepted, never invented.
+  - **Robust normalization + weights:** min–max across survivors with defined degenerate cases (single
+    candidate or all-identical → 1.0; missing → 0.0); base weights adjusted by `walking_preference` and
+    `luggage`, then renormalized. Weights are **never** LLM-generated.
+  - **Delay consumed, not predicted:** `delay_risk` **and** a known `delay_min_estimate` are penalized
+    (0.001/min, capped at 60) — the only scoring change vs A3. No ML, no LSTM.
+  - **Deterministic ranking + grounded explanation:** rank by score, tie-broken by lower fare → fewer
+    transfers → stable id; every card carries `rank`, `valid`, `strengths`, `trade_offs` and
+    `constraint_violations` drawn only from real values. 0 valid ⇒ no recommendation; 1 valid ⇒ no
+    fabricated alternatives.
+  - **API + frontend:** `POST /api/route/plan` preserved; the schema change is **additive**
+    (`ConstraintViolation` + four `Recommendation` fields), mirrored in `frontend/src/types/api.ts` and
+    rendered inside the existing route cards using the current design system only.
+  - **Scope:** no real B/C data, no replanning/execution, no Travel Pass; all route data still **mock**.
+- **No route-planning features beyond A6's refined mock decision (by design).** No
   execution/booking, disruption replanning, ML, database, GTFS, automation, or Travel Pass are
-  built yet — those belong to A6+ / Workstream B / Workstream C. All A5 route data is **mock**.
+  built yet — those belong to A7+ / Workstream B / Workstream C. All A6 route data is **mock**.
 - **Honesty:** real Qwen connectivity is **not** claimed unless a key is configured; with no key the
   backend uses the mock extractor/client **and the mock tool-calling planner** (see
   [`AGENT_SPEC.md` §15](AGENT_SPEC.md)).
-- **Next (when instructed):** Workstream A phase **A6 — Route Decision Engine** (refine candidate
-  evaluation/scoring/selection/explanation, optionally against real B data); B and C proceed against
+- **Next (when instructed):** Workstream A phase **A7 — Mock Intelligence Integration** (wire in mock
+  fares/delays through the B boundary); B and C proceed against
   the agreed interfaces.
 
 ---
@@ -301,7 +325,7 @@ Full definitions + scoring model: [`AGENT_SPEC.md` §8–10](AGENT_SPEC.md).
 | **A3** | **Agent Architecture** ✅ | Agent state model + execution context, orchestration, deterministic decision/scoring over mock candidates. |
 | **A4** | **Agent Tool System** ✅ | Tool contract + structured result, availability model, registry + safe executor; `search_routes` (mock) available, other capabilities honest `NOT_IMPLEMENTED` stubs. |
 | **A5** | **Tool-Calling Orchestrator** ✅ | Bounded multi-step Qwen tool-calling loop (decide → call → observe): adapter (real + deterministic mock), iteration limit + duplicate/loop detection, decision grounded in the A3 engine. |
-| A6 | Route Decision Engine | Candidate evaluation, scoring, selection, explanation. |
+| **A6** | **Route Decision Engine** ✅ | Constraint-aware candidate evaluation: structured hard-constraint violations, defensive/malformed-candidate handling, robust normalization, preference-weighted + delay-aware scoring, deterministic ranking, grounded reasons/strengths/trade-offs. |
 | A7 | Mock Intelligence Integration | Wire in mock fares/delays (B boundary). |
 | A8 | Agent Experience / UI | Agent-activity UI, route presentation. |
 | A9 | Final API & Agent State | Stable `POST /api/route/plan`, agent status API. |

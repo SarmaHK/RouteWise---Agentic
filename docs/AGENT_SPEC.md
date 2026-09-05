@@ -26,8 +26,13 @@
 > executes it through the registry/executor and feeds the structured result back, repeating until a
 > final answer or the `MAX_AGENT_ITERATIONS` limit (default **8**); the decision stays **grounded** in
 > the A3 engine (no fabrication). Still **mock** (only `search_routes` returns data; the rest are
-> honest `NOT_IMPLEMENTED` stubs). The remaining agent behavior (replanning, execution, real B/C
-> intelligence) is built in **A6–A7**. Do not implement later-phase agent logic during A5.
+> honest `NOT_IMPLEMENTED` stubs). **A6 refines the decision engine itself** (§8–§11): structured
+> hard-constraint violations, defensive candidate handling, robust normalization, delay-aware
+> scoring, deterministic ranking with a 1-based `rank`, and grounded `strengths` / `trade_offs` /
+> `constraint_violations` on every route card — still deterministic, still **mock**, and with **no**
+> change to the A5 orchestrator or the A4 tool seam. The remaining agent behavior (replanning,
+> execution, real B/C intelligence) is built in **A7+**. Do not implement later-phase agent logic
+> during A6.
 
 ---
 
@@ -219,32 +224,52 @@ Rules:
 
 ## 8. Decision making & route scoring
 
-**Model (implemented deterministically in A3 — Route Decision Engine; refined with real data in A6):**
+**Model (deterministic — `backend/app/agent/decision.py`; built in A3, refined in A6; to be fed
+real B data later with no change to this flow):**
 
-1. **Filter** out any candidate that violates a **hard constraint** (§9). These are invalid.
-2. **Score** survivors on **soft preferences** (§10) → a normalized `score` (0–1).
-3. **Penalize** delay risk and discomfort (e.g., long walks with heavy luggage, many transfers).
-4. **Rank**; pick the top as `recommendation`; keep others as `alternatives` with trade-offs.
-5. **Explain**: produce a `rationale` + concise `reasons` referencing the user's own constraints.
+1. **Prepare** the candidate list defensively: skip malformed objects and duplicate ids, and treat
+   impossible values (negative / `NaN` / infinite fare, duration, walking, transfers, delay) as
+   **unknown** — recorded in `assumptions`, never silently accepted, never invented (§16).
+2. **Filter** out any candidate that violates a **hard constraint** (§9). These are invalid — and
+   each keeps its structured violations so it can be shown as a clearly-marked alternative.
+3. **Normalize** the survivors' features (min–max, best → 1.0).
+4. **Score** the **soft preferences** (§10) → a normalized `score` (0–1), minus the delay penalty
+   (delay risk **and** known delay minutes; discomfort is priced through the luggage-aware weights).
+5. **Rank** deterministically; the top **valid** candidate is the `recommendation`, the rest become
+   `alternatives` with trade-offs.
+6. **Explain**: a `rationale` + concise `reasons` / `strengths` referencing the user's own
+   constraints and the candidate's **real** values — never a fact that does not exist.
 
-**A3 scoring formula (transparent, deterministic — `backend/app/agent/decision.py`):**
+**A6 scoring formula (transparent, deterministic — `backend/app/agent/decision.py`):**
 
-- Each lower-is-better signal (`walking_km`, `total_duration_min`, `transfers`, `total_fare_lkr`)
-  is **min–max normalized** across the hard-constraint survivors (best → 1.0, worst → 0.0; a signal
-  missing on a candidate earns 0.0 — never fabricated). If all survivors tie on a signal, norm = 1.0.
+- **Features:** the lower-is-better signals `walking_km`, `total_duration_min`, `transfers`,
+  `total_fare_lkr` (`DecisionEngine.FEATURES`). A feature no survivor carries is simply absent — it
+  is never zero-filled or fabricated.
+- Each signal is **min–max normalized** across the hard-constraint survivors (best → 1.0, worst →
+  0.0). Degenerate ranges are defined: one candidate, or all-identical values, → `high == low` →
+  1.0; a signal missing (or impossible) on a candidate → 0.0 ("unknown earns no credit").
 - **Base weights:** `walking_km 0.30`, `total_duration_min 0.25`, `transfers 0.20`,
-  `total_fare_lkr 0.25`; `score = Σ(weight × norm)`.
-- **Luggage/preference awareness (§10 golden rule):** `walking_preference = minimize` scales the
-  walking weight ×1.75 (`ok` ×0.6); `luggage = heavy` scales walking ×1.5 **and** transfers ×1.4
-  (`none` scales walking ×0.8). Weights are renormalized to sum to 1.
-- **Delay penalty** subtracted from the score: `none 0`, `low 0.02`, `moderate 0.06`, `high 0.12`.
-- The final `score` is clamped to 0–1 and rounded to 3 decimals. **Rank** by score (tie-break:
-  lower fare → fewer transfers → id).
+  `total_fare_lkr 0.25`.
+- **Preference scaling (§10 golden rule):** `walking_preference = minimize` scales the walking weight
+  ×1.75 (`normal` = no change, `ok` ×0.6); `luggage = heavy` scales walking ×1.5 **and** transfers
+  ×1.4 (`none` scales walking ×0.8). Weights are then renormalized to sum to 1 (rounded to 6
+  decimals). Weights are **never** LLM-generated.
+- `weighted = Σ(weight × norm)`.
+- **Delay penalty** subtracted from `weighted`: `delay_risk` `none 0`, `low 0.02`, `moderate 0.06`,
+  `high 0.12`, **plus** `0.001` per known `delay_min_estimate` minute, capped at 60 minutes
+  (≤ 0.06). The engine **consumes** delay data when present; it never **predicts** it (§16) —
+  Workstream B can later supply real predictions through the same fields.
+- `score = clamp(weighted − delay_penalty, 0, 1)`, rounded to 3 decimals. **Rank** by score,
+  tie-broken deterministically by lower fare → fewer transfers → stable id (an unknown fare/transfer
+  count sorts last on that key). No randomness, no dictionary-iteration-order dependence.
 
-> Worked example (golden Colombo Fort → Ella): with `heavy` + `minimize`, R1 (least walking,
-> 1 transfer) scores **0.482** and wins; the *same* candidates with **no** preferences select R2
-> (cheaper, faster, direct) at **0.640** — genuine reasoning over data, not a hard-coded winner.
-> These weights are the A3 transparent baseline; **A6** may refine them against real B data.
+> Worked example (golden Colombo Fort → Ella, A6): with `heavy` + `minimize` the weights become
+> `walking 0.502392 / transfers 0.178628 / duration 0.159490 / fare 0.159490`; R1 (least walking,
+> 1 transfer) scores **0.472** and wins, R2 scores **0.408**, and R3 is excluded (LKR 2,350 >
+> LKR 2,000). The *same* candidates with **no** preferences select R2 (cheaper, faster, direct) at
+> **0.610** against R1 at **0.270** — genuine reasoning over data, not a hard-coded winner. `heavy`
+> alone (**0.544**) or `minimize` alone (**0.481**) still selects R2; it is the *combination* that
+> tips the decision. These are the transparent A3 weights refined in A6.
 
 ---
 
@@ -257,8 +282,18 @@ as "does not meet your requirement, because…").
 |-----------------|--------------|------|
 | **Origin** | `origin` | Route must start at the traveler's stated origin. |
 | **Destination** | `destination` | Route must actually reach the requested destination. |
-| **Budget** | `budget` (LKR) | `total_fare_lkr <= budget`. Over-budget routes are not valid picks. |
-| **Arrival deadline** | `arrival_deadline` | Estimated arrival `<= arrival_deadline`, accounting for predicted delay risk. |
+| **Budget** | `budget` (LKR) | `total_fare_lkr <= budget` (the ceiling is **inclusive**). Over-budget routes are not valid picks. |
+| **Arrival deadline** | `arrival_deadline` | Estimated arrival (`departure_time + total_duration_min + delay_min_estimate`) `<= arrival_deadline`. Checked **only** when a departure time is known; otherwise the skip is recorded as an `assumption` — never guessed. |
+| **Availability** | `availability` | Excluded **only** when explicitly `unavailable`. `unknown` (the honest A-phase default) is **not** a violation — the agent never claims real seats. |
+
+**A6 structured violations.** `DecisionEngine.validate_constraints` returns **every** violation as a
+`ConstraintViolation` — `type` ∈ `ORIGIN | DESTINATION | BUDGET | ARRIVAL_DEADLINE | AVAILABILITY`
+plus a grounded `message` — in that fixed precedence order. The **first** violation is the *primary*
+one and still drives the single-string `ExcludedCandidate.constraint`
+(`origin | destination | budget | arrival_deadline | availability`), so the A3 contract is preserved.
+Violations surface on the alternative card as `constraint_violations[]` with `valid: false` — a
+candidate is never silently discarded. An **impossible** value (negative / `NaN` / infinite) counts as
+*unknown*, so it can neither trigger nor hide a violation; it is recorded in `assumptions` instead.
 
 Handling examples:
 
@@ -289,6 +324,13 @@ another, and must **explain** significant trade-offs.
 > hard budget/deadline constraints.** This must be the result of **reasoning over data**, never
 > a hard-coded answer.
 
+> **A6 status:** `walking_km`, `total_duration_min`, `transfers` and `total_fare_lkr` are scored, and
+> `luggage` is applied as a weight adjustment (walking **and** transfers). Soft preferences are
+> evaluated **only after** the hard-constraint filter — they can never rescue an invalid candidate.
+> **Transfer wait time and mode comfort/crowding data do not exist on the A6 candidate**, so they are
+> *not* scored; the engine will not invent them (§16). They remain documented extension points:
+> Workstream B adds a candidate field + a base weight and this flow is unchanged.
+
 ---
 
 ## 11. Alternatives
@@ -298,6 +340,15 @@ another, and must **explain** significant trade-offs.
 - Alternatives must also **respect hard constraints** (or be clearly marked as violating one,
   e.g., "over budget").
 - Keep the set small and meaningful (typically 2–3).
+- **A6 ordering & structure:** valid runners-up first (**by `rank`**), then excluded candidates,
+  capped at 3 — and **never fabricated**: a single valid candidate yields **no** alternative. Each
+  card carries `rank` (1-based among *valid* candidates; `null` when excluded), `valid`, `strengths`
+  (grounded ✓ factors) and `constraint_violations` (structured ✗). `trade_offs` are drawn from a
+  fixed grounded vocabulary — cheaper / faster / more walking / more transfers / higher delay risk /
+  over budget — and when none applies the card says only that it ranked lower; it never claims a
+  similarity the data does not support.
+- **No valid candidate ⇒ no recommendation** (`recommendation: null`, `satisfied: false`) plus an
+  honest `reasoning` that names the closest **real** option (§13).
 
 ---
 
@@ -331,7 +382,8 @@ another, and must **explain** significant trade-offs.
   with a clear explanation over an HTTP error. **A3 implements this:** when no candidate satisfies
   the hard constraints (or the corridor has no mock data) the agent returns `200` with
   `status: COMPLETED`, `recommendation: null`, and an honest `reasoning` (optionally the excluded
-  candidates as clearly-marked alternatives) — never a fabricated pick. (Policy reconfirmed in A6/A9.)
+  candidates as clearly-marked alternatives) — never a fabricated pick. (Policy reconfirmed in **A6**,
+  where each marked alternative also carries its structured `constraint_violations`.)
 - Never leave the user with a blank screen, an infinite spinner, or a fabricated success.
 
 ---
@@ -392,7 +444,7 @@ Every completed plan includes a **ReasoningSummary** that:
 
 | Situation | Correct behavior |
 |-----------|------------------|
-| No route within budget | Report honestly; suggest relaxing budget/time; do **not** fake success (**A3 ✅**: `200` + `COMPLETED`, `recommendation: null`, honest `reasoning`, over-budget candidates shown as marked alternatives). |
+| No route within budget | Report honestly; suggest relaxing budget/time; do **not** fake success (**A3 ✅ / A6 ✅**: `200` + `COMPLETED`, `recommendation: null`, honest `reasoning` naming the closest real fare, over-budget candidates shown as marked alternatives with structured `constraint_violations`). |
 | Fare unknown | Call `get_fare_estimate`; if unavailable, say "estimate unavailable" — never invent. |
 | Delay risk high | Surface it; consider re-planning; don't hide it. |
 | Missing destination | Ask or state the assumption; don't guess silently (**A2 ✅**: sets `clarification_required` + a question). |
@@ -423,6 +475,11 @@ the loop repeats until a final answer or the iteration limit — with duplicate-
 `can_advance`-guarded state machine (**no** new `TOOL_CALLING` state), and a decision **grounded** in
 the A3 engine over tool-gathered candidates (never fabricated; the limit stops with no recommendation).
 Real Qwen is used when `MODEL_STUDIO_API_KEY` is present; otherwise a deterministic **mock** planner
-drives the same loop (`data_source: mock`). The rest of the agent (replanning, execution, real B/C
-intelligence) is built in **A6–A7**. During **A5**, do **not** implement later-phase agent logic or
+drives the same loop (`data_source: mock`). **A6 — Route Decision Engine** then refines that
+decision layer in place (§8–§11) without touching the A4 seam or the A5 loop: structured
+hard-constraint validation, defensive candidate preparation, robust feature normalization,
+delay-aware weighted scoring, deterministic ranking/tie-breaking, and additive route-comparison
+fields (`rank` / `valid` / `strengths` / `constraint_violations`) — the winner is still computed, never
+chosen by the model and never hard-coded. The rest of the agent (replanning, execution, real B/C
+intelligence) is built in **A7+**. During **A6**, do **not** implement later-phase agent logic or
 real Workstream B/C functionality — only keep this spec consistent so all future work aligns.

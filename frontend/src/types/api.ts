@@ -137,10 +137,27 @@ export interface Leg {
 }
 
 /**
+ * A single structured hard-constraint failure (A6 §5), mirroring the backend
+ * `ConstraintViolation`. Surfaced on a `Recommendation` so the UI can explain *why* a route was
+ * excluded instead of silently dropping it. `type` is a stable uppercase code; `message` is
+ * concise and grounded in the actual candidate/request values (A6 §14).
+ */
+export interface ConstraintViolation {
+  /** Stable code: ORIGIN | DESTINATION | BUDGET | ARRIVAL_DEADLINE | AVAILABILITY. */
+  type: string;
+  /** Concise, grounded human explanation of the failure. */
+  message: string;
+}
+
+/**
  * A recommended (or alternative) route (API_CONTRACTS §3), populated by the A3 decision engine.
  * `rationale` is the headline reason; `reasons` is the concise, observable list of decision
  * factors (A3 brief §8/§14.6); `trade_offs` explains why an alternative ranked lower. Every
  * figure is MOCK in A3 (`data_source`), never live transit data.
+ *
+ * A6 refines the decision engine and adds four additive, optional route-comparison fields
+ * (`rank`, `valid`, `strengths`, `constraint_violations`). They may be absent on older responses,
+ * so the UI renders them only when present — the A3 contract is preserved.
  */
 export interface Recommendation {
   id: string;
@@ -155,6 +172,14 @@ export interface Recommendation {
   rationale?: string | null;
   reasons?: string[];
   trade_offs?: string[];
+  /** A6 additive: 1-based rank among VALID candidates; absent/null when excluded. */
+  rank?: number | null;
+  /** A6 additive: true when every hard constraint passed; false when excluded. */
+  valid?: boolean | null;
+  /** A6 additive: major grounded strengths for route comparison (§11). */
+  strengths?: string[];
+  /** A6 additive: structured hard-constraint failures (§5); empty when valid. */
+  constraint_violations?: ConstraintViolation[];
   is_recommended?: boolean;
   data_source?: DataSource;
 }
