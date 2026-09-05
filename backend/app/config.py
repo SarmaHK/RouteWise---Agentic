@@ -49,6 +49,9 @@ class Settings(BaseSettings):
     # --- Transit Intelligence & ML (Workstream B) ---
     enable_transit_intelligence: bool = False
 
+    # --- Autonomous Execution & Cloud (Workstream C) ---
+    enable_autonomous_execution: bool = False
+
     @property
     def cors_origins(self) -> list[str]:
         """CORS origins parsed from the comma-separated env value."""

@@ -1,0 +1,73 @@
+version: "3.8"
+
+# ==============================================================================
+# RouteWise Agentic — Multi-Service Docker Compose
+# Workstream C: Autonomous Execution & Cloud Deployment
+# ==============================================================================
+
+services:
+  # --- 1. PostgreSQL / PostGIS Spatial Transit Database ---
+  db:
+    image: postgis/postgis:15-3.3
+    container_name: routewise-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: routewise_transit
+      POSTGRES_USER: routewise
+      POSTGRES_PASSWORD: routewise_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./backend/app/db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U routewise -d routewise_transit"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # --- 2. FastAPI Backend Engine (Workstreams A, B, C) ---
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: routewise-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      ENVIRONMENT: production
+      LOG_LEVEL: INFO
+      ENABLE_TRANSIT_INTELLIGENCE: "true"
+      ENABLE_AUTONOMOUS_EXECUTION: "true"
+      DATABASE_URL: postgresql://routewise:routewise_pass@db:5432/routewise_transit
+      MODEL_STUDIO_API_KEY: ${MODEL_STUDIO_API_KEY:-}
+      MODEL_STUDIO_BASE_URL: ${MODEL_STUDIO_BASE_URL:-https://dashscope-intl.aliyuncs.com/compatible-mode/v1}
+      MODEL_NAME: ${MODEL_NAME:-qwen-max}
+      MAX_AGENT_ITERATIONS: 8
+      BACKEND_CORS_ORIGINS: "http://localhost,http://localhost:5173,http://localhost:80,http://127.0.0.1:5173"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  # --- 3. React / Vite Frontend & Travel Pass UI ---
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: routewise-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "5173:80"
+    depends_on:
+      - backend
+
+volumes:
+  db_data:
+    driver: local
