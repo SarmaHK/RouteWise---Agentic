@@ -37,17 +37,38 @@ it, and one that contradicts it is recorded as an honest conflict instead of bei
 resolved. The final recommendation is still computed by the deterministic
 :class:`~app.agent.decision.DecisionEngine`, which still never touches a mock dataset itself
 (A7 brief §3/§16). Mock mode is fully functional with no API key.
+
+**A9** adds no state, no transition and no capability (brief §4/§25). It makes one execution
+*identifiable, measurable and honest about its own provenance*:
+
+* a lightweight ``request_id`` travels with the run so the HTTP response, the log lines and the
+  recorded actions can be correlated (brief §10);
+* the run reports how much bounded work it did — iterations, executed tool calls, total duration,
+  and a duration per tool call (brief §11);
+* every recorded action carries a machine-readable ``kind``, so a consumer can render the trace
+  without special-casing each phase (brief §5);
+* structured ``event=… key=value`` logs mark the start, the understood request, each selected /
+  executed / failed tool call, the decision and the end of the run — never an API key, never the
+  traveller's raw text, never hidden chain-of-thought (brief §9);
+* the PLANNING action reports *which planner* ran (live model or deterministic mock) instead of
+  hard-coding ``mock`` (brief §14), while route facts stay ``mock`` until Workstream B says
+  otherwise;
+* every piece of run state is created inside the call and dies with it, so repeated or concurrent
+  requests cannot leak candidates, tool results, errors or actions into each other (brief §13).
 """
 
 from __future__ import annotations
 
 import json
+import logging
+import time
 from functools import lru_cache
 from typing import Any, Optional
 
 from app.agent.decision import Decision, DecisionEngine
 from app.agent.state import AgentExecutionContext
 from app.config import Settings, get_settings
+from app.logging_config import format_event
 from app.schemas.route import AgentState, DataSource, ToolCall
 from app.schemas.travel_request import ExtractionSource, TravelRequest
 from app.services.ai.agent import (
@@ -63,6 +84,8 @@ from app.services.ai.agent import (
 )
 from app.tools.base import ToolResult
 from app.tools.registry import ToolRegistry, build_tools, get_tools
+
+logger = logging.getLogger("routewise.agent")
 
 #: Default upper bound on autonomous tool-calling turns for one request (A5 brief §8). Overridden
 #: by ``settings.max_agent_iterations`` / the ``MAX_AGENT_ITERATIONS`` env var.
@@ -107,6 +130,15 @@ _SENSITIVE_ARG_KEYS = frozenset(
 _MAX_ARG_LEN = 120
 
 
+def _elapsed_ms(started: float) -> float:
+    """Milliseconds since ``started`` (a ``time.perf_counter()`` reading), rounded for logs.
+
+    ``perf_counter`` is monotonic, so a reported duration can never go backwards or be skewed by a
+    wall-clock adjustment (A9 brief §11).
+    """
+    return round((time.perf_counter() - started) * 1000, 2)
+
+
 class RouteAgent:
     """Orchestrates one travel request through the canonical agent states."""
 
@@ -131,14 +163,68 @@ class RouteAgent:
     # ------------------------------------------------------------------ #
     # Main entry point
     # ------------------------------------------------------------------ #
-    def run(self, request: TravelRequest) -> AgentExecutionContext:
-        """Understand → (gate) → plan → [bounded multi-step tool loop] → evaluate → complete."""
+    def run(
+        self, request: TravelRequest, request_id: Optional[str] = None
+    ) -> AgentExecutionContext:
+        """Run one travel request end-to-end and return its isolated execution context.
+
+        ``request_id`` (A9 brief §10) is optional and exists only for correlation: the API layer
+        mints one per HTTP request so the response, the logs and the actions all refer to the same
+        execution. It identifies *a request*, never a user, and is never persisted. Omitting it
+        keeps every A3–A8 call site working — the context simply mints its own.
+
+        Isolation (A9 brief §13): all run state — the context, the loop counters, the seen-call
+        fingerprints, the transcript, the observations — is created inside this call and discarded
+        with it. :class:`RouteAgent` holds no per-request attribute, so the cached singleton can
+        serve repeated and concurrent requests without leaking candidates, tool results, errors or
+        actions between them.
+        """
+        started = time.perf_counter()
         context = AgentExecutionContext(
             request=request,
             available_tools=self._tools.names(),
             data_source=DataSource.mock,
         )
+        if request_id:
+            context.request_id = request_id
+        try:
+            return self._execute(context, request, started)
+        except Exception as exc:  # noqa: BLE001 — logged for correlation, never swallowed
+            # A9 (§9): the only path that leaves a run genuinely broken. The exception CLASS is
+            # logged rather than its message, because a real Workstream B/C failure could carry a
+            # credential or a DSN; the exception is re-raised unchanged so the API's existing 500
+            # handler still owns the user-facing behaviour.
+            logger.error(
+                format_event(
+                    "agent.errored",
+                    request_id=context.request_id,
+                    state=context.state,
+                    error=exc.__class__.__name__,
+                    duration_ms=_elapsed_ms(started),
+                )
+            )
+            raise
+
+    def _execute(
+        self,
+        context: AgentExecutionContext,
+        request: TravelRequest,
+        started: float,
+    ) -> AgentExecutionContext:
+        """Understand → (gate) → plan → [bounded multi-step tool loop] → evaluate → complete."""
+        rid = context.request_id
         extraction_source = self._extraction_data_source(request)
+        logger.info(
+            format_event(
+                "agent.start",
+                request_id=rid,
+                origin=request.origin,
+                destination=request.destination,
+                planner=self._planner.model,
+                planner_source=self._planner.data_source,
+                max_iterations=self._max_iterations,
+            )
+        )
 
         # --- UNDERSTANDING ------------------------------------------------- #
         context.advance(AgentState.UNDERSTANDING)
@@ -147,6 +233,16 @@ class RouteAgent:
             label="Understood travel request",
             detail=self._understanding_detail(request),
             data_source=extraction_source,
+            kind="understanding",
+        )
+        logger.info(
+            format_event(
+                "travel_request.received",
+                request_id=rid,
+                source=request.extraction_source,
+                clarification=request.clarification_required,
+                missing=len(request.missing_fields),
+            )
         )
 
         # Clarification gate (A3 brief §12): stop before deciding, stay in UNDERSTANDING.
@@ -161,11 +257,15 @@ class RouteAgent:
                 ),
                 status="active",
                 data_source=extraction_source,
+                kind="clarification",
             )
             context.reasoning = (
                 "I need a little more information before I can plan this trip: "
                 + " ".join(request.clarification_questions)
             )
+            # A9 (§4/§6): clarification is a *safe* end, not a failure — the run stays in
+            # UNDERSTANDING, recommends nothing, and the response says exactly that.
+            self._finish(context, started)
             return context
 
         # --- PLANNING ------------------------------------------------------ #
@@ -180,7 +280,13 @@ class RouteAgent:
                 "then score the gathered candidates. Only AVAILABLE tools are offered to the "
                 "model; not_implemented capabilities are excluded so they are never called."
             ),
-            data_source=DataSource.mock,
+            # A9 (§14): this action reports *who planned*, not where the route figures came from.
+            # With a key configured that is the live model; in mock mode it stays ``mock``. Route
+            # facts remain mock until Workstream B supplies real ones, whichever planner ran.
+            data_source=(
+                DataSource.live if self._planner.data_source == "live" else DataSource.mock
+            ),
+            kind="planning",
         )
 
         # --- Bounded multi-step tool loop (A5 §7): the planner SELECTS, we EXECUTE --- #
@@ -206,6 +312,7 @@ class RouteAgent:
 
         while iteration < self._max_iterations:
             iteration += 1
+            context.iteration_count = iteration  # A9 (§11): how much of the budget was consumed
             ctx = PlannerContext(
                 messages=transcript,
                 tools=tool_defs,
@@ -228,6 +335,14 @@ class RouteAgent:
 
             repeated = False
             for call in decision.tool_calls:
+                logger.info(
+                    format_event(
+                        "tool.selected",
+                        request_id=rid,
+                        tool=call.name,
+                        iteration=iteration,
+                    )
+                )
                 fingerprint = self._fingerprint(call)
                 if fingerprint in seen_calls:
                     # §18: an identical call yields no new information — do NOT re-execute it.
@@ -238,6 +353,9 @@ class RouteAgent:
                         f"Repeated identical '{call.name}' call skipped (no new information).",
                     )
                     context.errors.append(suppressed.message)
+                    self._log_tool_result(
+                        context, call, suppressed, iteration=iteration, executed=False
+                    )
                     self._record_tool_action(context, call, suppressed, repeated=True)
                     transcript.append(tool_result_message(call.id, suppressed))
                     continue
@@ -252,8 +370,17 @@ class RouteAgent:
                     target_state = AgentState.SEARCHING
                 if context.state != target_state:
                     context.advance(target_state)  # SEARCHING (gather) or EXECUTING (act) — §9
+                call_started = time.perf_counter()
                 result = self._tools.execute(call.name, call.arguments)
                 steps_taken += 1
+                context.tool_call_count += 1  # A9 (§11): calls that really reached the tool layer
+                self._log_tool_result(
+                    context,
+                    call,
+                    result,
+                    iteration=iteration,
+                    duration_ms=_elapsed_ms(call_started),
+                )
                 # A7: remember that this capability ran (success or failure) so the planner never
                 # asks for the same thing again, and file what it actually returned.
                 called_tools.append(call.name)
@@ -279,6 +406,7 @@ class RouteAgent:
         # the A6 engine decides, and report any contradiction honestly instead of resolving it.
         intel_summary = self._merge_intelligence(context, observations)
         self._finalize(context, request, limit_hit, observations, intel_summary)
+        self._finish(context, started)
         return context
 
     # ------------------------------------------------------------------ #
@@ -316,6 +444,7 @@ class RouteAgent:
                 detail=message,
                 status="error",
                 data_source=DataSource.mock,
+                kind="evaluation",
             )
             context.reasoning = (
                 "I could not reach a confident decision within the allowed number of tool-calling "
@@ -333,6 +462,19 @@ class RouteAgent:
                 label=self._evaluating_label(decision, len(context.candidates)),
                 detail=self._evaluating_detail(decision, intel_summary),
                 data_source=DataSource.mock,
+                kind="evaluation",
+            )
+            logger.info(
+                format_event(
+                    "decision.completed",
+                    request_id=context.request_id,
+                    recommendation=(
+                        decision.recommendation.id if decision.recommendation else None
+                    ),
+                    candidates=len(context.candidates),
+                    viable=len(decision.scored),
+                    excluded=len(decision.excluded),
+                )
             )
             completed_label = (
                 "Decision ready"
@@ -346,7 +488,68 @@ class RouteAgent:
             state=AgentState.COMPLETED,
             label=completed_label,
             detail=completed_detail,
+            # A9 (§4): the state and its action must not contradict each other. Exhausting the
+            # iteration budget still *completes* the run safely — nothing is fabricated and A5's
+            # documented contract for this path is COMPLETED — but the closing action is an error,
+            # exactly as its EVALUATING sibling already was, so the trace never claims success.
+            status="error" if limit_hit else "done",
             data_source=DataSource.mock,
+            kind="completion",
+        )
+
+    def _finish(self, context: AgentExecutionContext, started: float) -> None:
+        """Stamp the run's duration and emit the single ``agent.completed`` event (A9 §9/§11).
+
+        Called on **every** terminal path (clarification stop and normal completion alike) so one
+        execution always produces exactly one closing log line carrying its own cost.
+        """
+        context.duration_ms = _elapsed_ms(started)
+        logger.info(
+            format_event(
+                "agent.completed",
+                request_id=context.request_id,
+                state=context.state,
+                recommendation=(
+                    context.recommendation.id if context.recommendation else None
+                ),
+                iterations=context.iteration_count,
+                tool_calls=context.tool_call_count,
+                errors=len(context.errors),
+                duration_ms=context.duration_ms,
+            )
+        )
+
+    @staticmethod
+    def _log_tool_result(
+        context: AgentExecutionContext,
+        call: ToolCallRequest,
+        result: ToolResult,
+        *,
+        iteration: int = 0,
+        duration_ms: Optional[float] = None,
+        executed: bool = True,
+    ) -> None:
+        """Emit ``tool.executed`` or ``tool.failed`` for one call (A9 brief §8/§9/§11).
+
+        Only short, non-sensitive facts are logged: the tool name, its structured status and
+        ``error_code``, the honesty flag and how long it took. Never the payload, never a
+        credential, never the planner's reasoning. A suppressed duplicate is reported with
+        ``executed=false`` and no duration, because it never reached the tool layer.
+        """
+        fields: dict[str, Any] = {
+            "request_id": context.request_id,
+            "tool": call.name,
+            "iteration": iteration,
+            "status": result.status,
+            "data_source": result.data_source,
+            "duration_ms": duration_ms,
+        }
+        if not executed:
+            fields["executed"] = False
+        if result.error is not None:
+            fields["error_code"] = result.error.code
+        logger.info(
+            format_event("tool.executed" if result.success else "tool.failed", **fields)
         )
 
     # ------------------------------------------------------------------ #
@@ -482,7 +685,9 @@ class RouteAgent:
 
         The trace carries the resolved tool's ``availability``, the call's ``data_source``, and —
         on failure — the structured ``error_code``, with args sanitized (secrets redacted, long
-        values truncated). No credentials or hidden reasoning are ever exposed.
+        values truncated). No credentials or hidden reasoning are ever exposed. ``kind`` is always
+        ``tool_call`` whichever tool ran, so a consumer renders a search, a fare lookup and a
+        booking attempt with the same code (A9 brief §5).
         """
         tool = self._tools.get(call.name)
         success = result.success
@@ -507,6 +712,7 @@ class RouteAgent:
             ),
             status="done" if success else "error",
             data_source=result.data_source,
+            kind="tool_call",
         )
 
     @staticmethod

@@ -5,15 +5,18 @@
 > [`../docs/API_CONTRACTS.md`](../docs/API_CONTRACTS.md), and
 > [`../docs/AGENT_SPEC.md`](../docs/AGENT_SPEC.md) first.
 
-## Status — phase A1 (Project Foundation) ✅ implemented  ·  **current phase: A7**
+## Status — phase A1 (Project Foundation) ✅ implemented  ·  **current phase: A9**
 
 > The A1 description below is the **historical** foundation record. The authoritative current state
 > lives in [`../AI_CONTEXT.md`](../AI_CONTEXT.md) §6 and [`../docs/PROJECT.md`](../docs/PROJECT.md) §13:
-> **A1–A7 are implemented** — `POST /api/route/plan` now runs the full agent (A2 extraction → A3 state
+> **A1–A9 are implemented** — `POST /api/route/plan` now runs the full agent (A2 extraction → A3 state
 > machine + decision engine → A4 tool seam → A5 bounded multi-step Qwen tool-calling loop → A6
 > constraint-aware scoring → **A7 mock intelligence**: four `AVAILABLE` mock data tools over one shared
-> deterministic dataset). Still **not** built: Workstream B/C real data, execution/booking,
-> replanning, ML, database, GTFS, Travel Pass (A8+).
+> deterministic dataset), presented by the **A8** two-column agent-experience UI and stabilized in
+> **A9** (per-request `request_id` correlation, structured `event=…` observability logs, an action
+> `kind` contract, honest planner provenance, a typed `503` for an unreachable model). Still **not**
+> built: Workstream B/C real data, execution/booking,
+> replanning, ML, database, GTFS, Travel Pass (A10+).
 
 The **A1 foundation is built and verified**: a FastAPI app with env-backed configuration
 ([`app/config.py`](app/config.py)), logging ([`app/logging_config.py`](app/logging_config.py)),

@@ -50,6 +50,10 @@ export function RoutePlanner({ connection, onRecheckConnection }: RoutePlannerPr
   const handlePlan = useCallback(async (text: string) => {
     setStatus('loading');
     setError(null);
+    // A9 (brief §19/§24): a new request must clear the PREVIOUS run's data up front. Otherwise the
+    // old run's `agent_actions` keep feeding the rail while this one is in flight, so the stepper
+    // would show the last run's completed milestones during the new request (stale state).
+    setData(null);
     try {
       const response = await planRoute({ raw_text: text });
       setData(response);

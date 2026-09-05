@@ -4,11 +4,14 @@
 > Read [`../AI_CONTEXT.md`](../AI_CONTEXT.md) and
 > [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md) first.
 
-## Status — phase A8 (Agent Experience / UI) ✅ implemented
+## Status — phase A8 (Agent Experience / UI) ✅ implemented · A9 (stabilization) ✅
 
 The **A8 product UI is built and verified** — the React app boots, builds (`tsc --noEmit` strict +
 `vite build`), and talks to the backend through `services/api`. The A1 foundation is now the base for
-a two-column agent-experience UI. What exists now:
+a two-column agent-experience UI. **A9 kept the UI unchanged except consistency fixes**: a new request
+now clears the previous run's state (no stale trace/stepper during "Working…"), the `request_id` /
+`kind` additive contract fields are mirrored in `types/api.ts`, and the header badge reads "Phase
+A9". What exists now:
 
 ```
 frontend/

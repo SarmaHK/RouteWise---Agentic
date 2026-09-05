@@ -19,6 +19,12 @@ individual tools stay simple and the agent never needs to know their internals:
 
 Every path returns a :class:`ToolResult`; the executor never raises to the agent and never invents
 data.
+
+**A9** changes none of that structure (brief §8/§16: the tool contract is frozen for Workstream
+B/C). It only bounds *how much* of a failure reaches the user: the structured ``error_code``,
+``data_source`` and tool status are preserved exactly as before, while the human-readable message
+is capped, because a real Workstream B client could raise text carrying a DSN, a URL or an HTML
+error body. The untruncated text stays in the server-side log below it.
 """
 
 from __future__ import annotations
@@ -43,6 +49,19 @@ logger = logging.getLogger(__name__)
 
 #: Default per-call budget. Mock tools return instantly; this only guards a future slow/hung tool.
 DEFAULT_TOOL_TIMEOUT_S = 5.0
+
+#: Upper bound on the exception text interpolated into a user-facing ``EXECUTION_ERROR`` message
+#: (A9 brief §8: "keep the explanation concise"). The mock tools raise short, readable messages;
+#: this only matters once a real integration raises something verbose or half-sensitive.
+_MAX_TOOL_ERROR_DETAIL = 160
+
+
+def _brief_detail(exc: Exception) -> str:
+    """One line of bounded length describing a tool exception, for the ``ToolResult`` message."""
+    text = " ".join(str(exc).split()) or exc.__class__.__name__
+    if len(text) > _MAX_TOOL_ERROR_DETAIL:
+        return text[:_MAX_TOOL_ERROR_DETAIL].rstrip() + "…"
+    return text
 
 
 def _validation_details(exc: ValidationError) -> dict[str, Any]:
@@ -132,7 +151,7 @@ class ToolExecutor:
             return ToolResult.failure(
                 tool.name,
                 ToolErrorCode.EXECUTION_ERROR,
-                f"Tool '{tool.name}' failed: {exc}",
+                f"Tool '{tool.name}' failed: {_brief_detail(exc)}",
                 status=ToolStatus.error,
             )
 

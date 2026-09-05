@@ -95,14 +95,15 @@ If you (with approval) change architecture, contracts, components, or the design
 update the corresponding doc **in the same change**. Docs must never drift from reality.
 
 ### 18. Do not implement future phases unless explicitly instructed.
-Stay in the **current phase** (see [`PROJECT.md` §13–14](PROJECT.md)). Don't auto-advance. The A7
-**mock-intelligence integration & end-to-end agent validation** is now built on the A4 seam and the A5
-loop (one shared deterministic mock dataset, four `AVAILABLE` mock data tools, `ROUTE_NOT_FOUND`, a
-multi-step `MockAgentPlanner`, conservative per-route result merging, populated `legs`); don't start
-A8+ agent-experience/UI work, streaming/status endpoints, replanning/execution, ML, PostGIS, GTFS,
+Stay in the **current phase** (see [`PROJECT.md` §13–14](PROJECT.md)). Don't auto-advance. The A9
+**stabilization** is now built on the A8 UI and the A1–A7 backend (a per-request `request_id`,
+structured `event=…` observability logs, an action `kind` contract, honest planner provenance, a
+typed `503` for an unreachable model, capped tool-error detail, isolation/determinism regression
+tests); don't start
+A10+ handover work, replanning/execution, streaming/status endpoints, ML, PostGIS, GTFS,
 live transit APIs, automation, booking, monitoring, Travel Pass generation, or cloud deployment unless
-told to. Phase A7 also **must not** rewrite the
-A6 decision engine, the A5 tool-calling loop, or the A4 tool seam — it feeds them.
+told to. Phase A9 also **must not** redesign the
+A6 decision engine, the A5 tool-calling loop, the A4 tool seam, or the A8 UI — it stabilizes them.
 
 ### 19. Do not claim functionality works unless verified.
 Honest reporting only. Distinguish "implemented and tested" from "written but not run" from
@@ -121,7 +122,7 @@ thing that works cleanly and is documented — not a speculative framework.
   ([`WORKSTREAMS.md`](WORKSTREAMS.md)) — this is **not** an A-only project.
 - **Implementation is sequenced A-first.** The active build workstream is **A — AI Agent &
   Decision Engine**; B and C are built later by their owners **to the same interfaces**.
-- **Current phase: A7 — Mock Intelligence Integration & End-to-End Agent Validation.** Do not auto-continue into A8.
+- **Current phase: A9 — Agent & API Stabilization, Observability & Integration Readiness.** Do not auto-continue into A10.
 - You may create **clean interfaces / mocks / contracts** where a workstream needs a boundary —
   but **no real B/C functionality** until that workstream is explicitly started. **A7 replaced the
   B-facing mocks' *data source*, not their owner:** `backend/app/tools/intelligence.py` is the single

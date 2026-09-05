@@ -7,8 +7,9 @@
 >
 > **Status:** **A1 (foundation), A2 (request understanding), A3 (agent orchestration & decision),
 > A4 (tool system & capability execution), A5 (multi-step Qwen tool-calling orchestrator), A6
-> (constraint-aware decision-engine refinement), and A7 (mock intelligence integration &
-> end-to-end agent validation) are implemented.** A FastAPI backend (config, logging,
+> (constraint-aware decision-engine refinement), A7 (mock intelligence integration &
+> end-to-end agent validation), A8 (agent-experience UI) and A9 (agent & API stabilization,
+> observability & integration readiness) are implemented.** A FastAPI backend (config, logging,
 > CORS, `GET /health`, structured errors) now runs
 > a real agent layer: `POST /api/route/plan` extracts a validated `TravelRequest` (A2 — Qwen or a
 > deterministic mock), then `app/agent/` drives the canonical state machine and `app/agent/decision.py`
@@ -41,9 +42,15 @@
 > `error_code`), and the mock decision — and, since **A6**, each route card's `rank` / `valid` /
 > `strengths` / structured violations, using the existing design tokens
 > (`frontend/src/styles/`) as the visual
-> source of truth. **A7** adds only a per-leg list on the recommended route card and a ✓/✗ glyph on
-> each timeline tool line — **no new CSS, no new components**. Everything else here (real tools, ML, automation, execution, the full component UI)
-> remains the **agreed plan** for A8+. All route data is **mock**. Keep it **suitable for a hackathon
+> source of truth. **A8** turned that skeleton into the polished two-column agent-experience UI
+> (`features/route-planner/` + the registered `components/{ui,agent,travel}`), and **A9 stabilized
+> the whole pipeline for integration**: a per-request `request_id` (`X-Request-Id` header +
+> `PlanResponse.request_id`), structured `event=…` observability logs on the existing logging
+> foundation, a machine-readable `kind` on every `AgentAction`, honest planner provenance
+> (`data_source`/`model` from the planner, not hard-coded), a typed retryable `503` when the live
+> model is unreachable, and capped tool-error detail — all additive, no new states, tools,
+> endpoints or dependencies. Everything else here (real tools, ML, automation, execution)
+> remains the **agreed plan** for A10+/B/C. All route data is **mock**. Keep it **suitable for a hackathon
 > MVP** — simple, demonstrable, mock-backed.
 
 ---
@@ -270,15 +277,15 @@ backend/
 ├── app/
 │   ├── main.py            # ✅ FastAPI entrypoint, CORS, router registration, error handlers
 │   ├── config.py          # ✅ settings/env (API keys via env only — never committed)
-│   ├── logging_config.py  # ✅ logging foundation
-│   ├── api/               # ✅ health.py · route.py (A3 extraction → A5 agent loop → decision) · router.py  (agent status/stream: A8/A9)
+│   ├── logging_config.py  # ✅ logging foundation + A9 request-id / structured-event helpers
+│   ├── api/               # ✅ health.py · route.py (A3 extraction → A5 agent loop → decision; A9 request-id + 503 mapping) · router.py  (agent status/stream: reserved, decided against in A9)
 │   ├── schemas/           # ✅ Pydantic models mirroring API_CONTRACTS.md (A2 travel_request.py · A3 candidate.py · A5 route.py: ToolCall.error_code · A6 route.py: ConstraintViolation + Recommendation.rank/valid/strengths/constraint_violations)
 │   ├── services/ai/       # ✅ AI abstraction (base · qwen_client · mock_client · factory) + A2 extraction.py + A5 agent.py (Qwen tool-calling planner)
-│   ├── agent/             # ✅ A3: state.py (state machine + execution context) · decision.py (scoring, refined in A6) · orchestrator.py (A5 bounded multi-step loop; A7 merges tool results + legs)
+│   ├── agent/             # ✅ A3: state.py (state machine + execution context; A9 run metadata) · decision.py (scoring, refined in A6) · orchestrator.py (A5 bounded multi-step loop; A7 merges tool results + legs; A9 observability events + timing)
 │   └── tools/             # ✅ A3/A4: base.py (Tool ABC + ToolResult) · executor.py (A4 safe execution) · registry.py (A→B/C seam) · capabilities.py (the concrete tools)
 │       ├── intelligence.py # ✅ A7: MockRouteIntelligence — the ONE shared source of mock route truth (the Workstream-B replacement point)
 │       └── candidates.py   # ✅ A3 mock provider, A7 thin facade over intelligence.py (kept for backwards compatibility)
-├── tests/                 # ✅ foundation + A2 extraction + A3 state/decision/agent/API + A4 tool contract/registry/execution/stub/integration + A5 qwen-tool-calling/agent-loop + A6 decision-engine + A7 mock-intelligence (provider consistency / fare / delay / details / registry / agent loop / decision integration) tests
+├── tests/                 # ✅ foundation + A2 extraction + A3 state/decision/agent/API + A4 tool contract/registry/execution/stub/integration + A5 qwen-tool-calling/agent-loop + A6 decision-engine + A7 mock-intelligence (provider consistency / fare / delay / details / registry / agent loop / decision integration) + A9 stabilization (isolation / determinism / action contract / observability / error mapping) tests
 ├── requirements.txt       # ✅ dependencies (requirements.txt chosen over pyproject.toml)
 ├── .env.example           # ✅ config template (never commit .env)
 └── README.md
@@ -334,7 +341,7 @@ Travel request (text + structured fields)
                         → subtract the delay penalty → deterministic rank (agent/decision.py)
    → [Decision]       ✅ A3, refined ✅ A6: recommendation + ranked alternatives, each with grounded
                         reasons / strengths / trade_offs / constraint_violations (never fabricated)
-   → [Adaptation]     on disruption → REPLANNING loop back to searching (A8+)
+   → [Adaptation]     on disruption → REPLANNING loop back to searching (A10+/Workstream C)
    → [Delivery]       recommendation + explanation + agent_actions (+ Travel Pass data)
 ```
 
@@ -383,11 +390,13 @@ Travel request (text + structured fields)
 > fills the `legs[]` the UI renders in step **10**. Step **8 (EXECUTING)** and step
 > **11 (REPLANNING)**
 > are still **not** truly exercised — `prepare_booking` / `check_availability` and disruption handling
-> remain honest `not_implemented` stubs (Workstream C, A8+); on the happy path the agent goes
-> **EVALUATING → COMPLETED**.
+> remain honest `not_implemented` stubs (Workstream C, A10+); on the happy path the agent goes
+> **EVALUATING → COMPLETED**. **A9** wraps the whole flow in correlation + observability: every run
+> carries a `request_id` and emits structured `event=…` log lines with per-tool and total durations.
 
-Agent steps/states are surfaced to the UI as `agent_actions[]` (embedded) and/or streamed —
-the frontend abstracts the mechanism (see §3.3).
+Agent steps/states are surfaced to the UI as `agent_actions[]` embedded in the single-shot
+`POST /api/route/plan` response. **A9 decided the delivery mechanism:** single-shot only — **no**
+streaming/SSE/WebSocket and no agent status endpoint (the reserved routes stay unbuilt).
 
 ---
 
@@ -396,7 +405,7 @@ the frontend abstracts the mechanism (see §3.3).
 - Frontend calls **`POST /api/route/plan`** (the reserved primary endpoint; an honest
   **foundation stub** in A1, a real **mock agent decision** in **A3**, a **model-driven multi-step
   tool loop** in **A5**, a **constraint-aware ranked decision** in **A6**, a **fully-populated mock
-  intelligence run** in **A7**, live-data planning in **A9**).
+  intelligence run** in **A7**, live-data planning in **Workstream B**).
 - Response carries `status` (canonical agent state), `request` (normalized), `recommendation`,
   `legs[]`, `alternatives[]`, `agent_actions[]`, and `reasoning`. All
   route figures are **mock**; `recommendation`/`alternatives`/`agent_actions` are populated from A3.
@@ -404,10 +413,12 @@ the frontend abstracts the mechanism (see §3.3).
   four **additive** recommendation fields (`rank`, `valid`, `strengths`, `constraint_violations`) — no
   new endpoint, no breaking change. **A7** populates `legs[]` for the recommended route (it was empty
   before) and lengthens `agent_actions[]` to a multi-tool trace — again **additive**: same endpoint,
-  same field names, same response keys.
+  same field names, same response keys. **A9** adds two more **additive, optional** fields —
+  `AgentAction.kind` and `PlanResponse.request_id` (mirroring the `X-Request-Id` header) — and
+  freezes the whole shape as the B/C integration baseline.
 - Optional (later) **`GET /api/agent/status`** and **`GET /api/agent/stream`** for live agent
-  activity — mechanism **TBD** in A8/A9 (**A5** keeps the whole loop in-request: a single response
-  with the full `agent_actions[]` trace, no streaming).
+  activity — mechanism **decided in A9**: **single-shot only** (a single response
+  with the full `agent_actions[]` trace, no streaming); both routes stay reserved and unbuilt.
 - Errors use a structured envelope. Full shapes in
   [`API_CONTRACTS.md`](API_CONTRACTS.md).
 

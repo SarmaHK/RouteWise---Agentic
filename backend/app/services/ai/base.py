@@ -12,6 +12,21 @@ from dataclasses import dataclass, field
 from typing import Any, Literal, Optional
 
 
+class AIServiceUnavailableError(RuntimeError):
+    """The configured live AI service could not be reached (A9 brief §7/§14).
+
+    Raised **only** on the live path — the deterministic mock never raises it, so mock mode stays
+    fully functional and deterministic with no credentials. It exists so the API can distinguish
+    "the upstream model is unreachable" (a retryable ``503``, the meaning API_CONTRACTS §5 already
+    reserves for a downstream/tool that is unavailable) from "the model answered with invalid
+    output" (:class:`~app.services.ai.extraction.MalformedExtractionError` → ``502``) and from an
+    unexpected internal bug (``500``).
+
+    Honesty (A9 brief §14): the failure is reported as a failure. The system never silently
+    pretends a live model answered, and never claims mock output came from Qwen.
+    """
+
+
 @dataclass
 class AIResponse:
     """A normalized, provider-agnostic completion result."""

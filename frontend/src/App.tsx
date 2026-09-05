@@ -1,7 +1,8 @@
 /**
  * App shell (ARCHITECTURE §3.1: `App.*` = providers + layout ONLY, no business logic).
  *
- * Phase A8 — Agent Experience & Production-Quality UI. The shell owns exactly one concern:
+ * Phase A9 — Agent & API stabilization (the A8 UI is deliberately UNCHANGED, A9 brief §19: only
+ * state-consistency fixes, no redesign). The shell owns exactly one concern:
  * backend connectivity (the health check). It surfaces that as a StatusIndicator in the header and
  * passes the connection state down so the plan flow can gate its submit and explain an offline
  * backend (§12.8 error + Retry). Everything else — the request, the agent activity, the
@@ -83,7 +84,7 @@ export default function App() {
             </span>
           </div>
 
-          <p className="phase-badge">Phase A8 · Agent experience</p>
+          <p className="phase-badge">Phase A9 · Stabilization</p>
 
           <StatusIndicator
             state={connection}
@@ -105,7 +106,7 @@ export default function App() {
       <footer className="app-footer">
         <div className="rw-container">
           <p className="rw-meta">
-            RouteWise Agentic · Workstream A · Phase A8 agent experience (mock data). Design tokens
+            RouteWise Agentic · Workstream A · Phase A9 stabilization (mock data). Design tokens
             are the single source of visual truth.
           </p>
         </div>

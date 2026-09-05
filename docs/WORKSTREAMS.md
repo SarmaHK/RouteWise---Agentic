@@ -114,8 +114,8 @@ decision engine, the stable public API, and the agent-activity experience.
 `A1 Foundation → A2 Travel Request Understanding → A3 Agent Architecture → A4 Agent Tool System
 → A5 Tool-Calling Orchestrator → A6 Route Decision Engine → A7 Mock Intelligence Integration →
 A8 Agent Experience/UI → A9 Final API & Agent State → A10 Workstream B Handover.`
-**Current: A7 (Mock Intelligence Integration & End-to-End Agent Validation) — A1–A7 are
-implemented.** Do not auto-advance into A8.
+**Current: A9 (Agent & API Stabilization, Observability & Integration Readiness) — A1–A9 are
+implemented.** Do not auto-advance into A10.
 
 ---
 

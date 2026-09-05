@@ -4,7 +4,7 @@
 
 - **Competition:** AI Buildathon 2026
 - **Track:** Hospitality & Tourism
-- **Current phase:** A7 — Mock Intelligence Integration & End-to-End Agent Validation ✅ (A1 foundation + A2 travel-request understanding + A3 agent state machine, tool abstraction, deterministic **mock** candidate provider and transparent decision engine + A4 capability-execution tool seam + A5 bounded multi-step Qwen tool-calling loop + A6 constraint-aware decision refinement — structured violations, robust normalization, delay-aware scoring, deterministic ranking + A7 a complete deterministic mock intelligence environment — one shared mock route-truth module, four `AVAILABLE` mock tools (`search_routes`, `get_fare_estimate`, `get_delay_prediction`, `get_route_details`), `ROUTE_NOT_FOUND`, a multi-step mock-Qwen planner, per-route result merging and populated `legs` — all wired into `POST /api/route/plan`; all route data is mock)
+- **Current phase:** A9 — Agent & API Stabilization, Observability & Integration Readiness ✅ (A1 foundation + A2 travel-request understanding + A3 agent state machine, tool abstraction, deterministic **mock** candidate provider and transparent decision engine + A4 capability-execution tool seam + A5 bounded multi-step Qwen tool-calling loop + A6 constraint-aware decision refinement — structured violations, robust normalization, delay-aware scoring, deterministic ranking + A7 a complete deterministic mock intelligence environment — one shared mock route-truth module, four `AVAILABLE` mock tools, `ROUTE_NOT_FOUND`, a multi-step mock-Qwen planner, per-route result merging and populated `legs` + A8 the polished two-column agent-experience UI + A9 stabilization — a per-request `request_id` correlation id, structured `event=…` observability logs, an action `kind` contract, honest planner provenance, a typed `503` for an unreachable model, capped tool-error detail, and a 20-test regression suite; all route data is still mock)
 - **Build sequencing:** Workstream A first; B & C documented now, built later to the same interfaces
 
 > 🤖 **AI agents: read [`AI_CONTEXT.md`](AI_CONTEXT.md) before doing anything.**
@@ -116,9 +116,9 @@ where a boundary is needed now). Mantra: **A decides, B informs, C acts.**
 | A4 | Agent Tool System | ✅ Complete |
 | A5 | Tool-Calling Orchestrator | ✅ Complete |
 | A6 | Route Decision Engine | ✅ Complete |
-| **A7** | **Mock Intelligence Integration** | ✅ **Current** |
-| A8 | Agent Experience / UI | ⏳ |
-| A9 | Final API & Agent State | ⏳ |
+| **A7** | **Mock Intelligence Integration** | ✅ Complete |
+| **A8** | **Agent Experience / UI** | ✅ Complete |
+| **A9** | **Final API & Agent State** | ✅ **Current** |
 | A10 | Workstream B Handover | ⏳ |
 
 Do not auto-advance past the current phase.

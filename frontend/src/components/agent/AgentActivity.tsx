@@ -5,8 +5,8 @@
  * spinner) and an honest empty state before any request.
  *
  * Progress is derived ONLY from states the backend actually reported (A8 brief §25: never fake
- * progress). The single-shot A8 API returns the whole trace at once, so the stepper fills in when
- * the response lands; incremental streaming is A9. No chain-of-thought is shown (§11/§24).
+ * progress). The API is single-shot BY DESIGN (A9 brief §25: no SSE/WebSocket/streaming), so the
+ * stepper fills in when the response lands. No chain-of-thought is shown (§11/§24).
  */
 
 import type { AgentAction } from '../../types/api';

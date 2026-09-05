@@ -22,8 +22,14 @@
 > judge-facing UI** (a two-column shell with a persistent **Agent activity rail**, the registered
 > `ui`/`agent`/`travel` components, honest "Working…" loading + skeleton states, per-leg `DelayBadge`
 > / `FareDisplay` / `ModeIcon`, and clear clarification / no-route / error banners — presentation
-> only; the backend, contract and states are unchanged). **Step
-> 11 (disruption/re-planning) and step 12 (Travel Pass) are not built** (A9+ / Workstream C). All
+> only; the backend, contract and states are unchanged), and **A9 makes every run identifiable and
+> the failure paths provably safe** (each response carries a `request_id` matching the `X-Request-Id`
+> header and the backend's structured `event=…` logs; each trace action carries a machine-readable
+> `kind`; the golden run was re-validated end-to-end and all eleven documented failure scenarios —
+> missing origin/destination, no valid routes, tool failure, unknown tool, invalid tool arguments,
+> repeated tool call, iteration limit, malformed AI output, backend unavailable, stale state after a
+> new request — fail or recover predictably). **Step
+> 11 (disruption/re-planning) and step 12 (Travel Pass) are not built** (A10+ / Workstream C). All
 > route data is **mock**.
 
 ---
@@ -104,9 +110,10 @@ The demo must prove the Agent can **reason**, not recite:
 > **A8 (UI):** steps 1–10 are now presented by the real registered components in a two-column shell
 > (`TripForm` → the `AgentStatus`/`AgentActivity`/`AgentStep` rail → `RouteCard`/`RouteTimeline`/
 > `TransportLeg`/`FareDisplay`/`DelayBadge` → `ReasoningSummary` → `TravelRequestSummary`). The UI is
-> presentation only — it renders the same single-shot `POST /api/route/plan` response; there is still
-> no live streaming (the rail fills from the returned `agent_actions[]`, and loading is an honest
-> indeterminate "Working…"). Steps 11–12 remain unbuilt (A9+ / Workstream C).
+> presentation only — it renders the same single-shot `POST /api/route/plan` response; there is
+> no live streaming **by decision** (A9 settled the delivery mechanism as single-shot: the rail fills
+> from the returned `agent_actions[]`, and loading is an honest
+> indeterminate "Working…"). Steps 11–12 remain unbuilt (A10+ / Workstream C).
 
 ---
 
@@ -261,5 +268,6 @@ do **not** hard-code the "winner".
 > hardens the tool execution behind step 5, A5 makes that step an autonomous multi-step Qwen loop,
 > A6 deepens the evaluation/decision behind steps 7–10, and A7 gives steps 5–6 a complete,
 > consistent multi-tool mock intelligence run (search + fare + delay + details, legs on the card),
-> and A8 presents steps 1–10 through the polished two-column agent-experience UI;
-> the full demo (including steps 11–12) completes across A9 + Workstreams B/C.
+> and A8 presents steps 1–10 through the polished two-column agent-experience UI, and A9 freezes the
+> pipeline as the observable, regression-protected integration baseline;
+> the full demo (including steps 11–12) completes across A10 + Workstreams B/C.

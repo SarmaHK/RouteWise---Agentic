@@ -552,8 +552,42 @@ data tools** (`search_routes`, `get_fare_estimate`, `get_delay_prediction`, `get
 multi-step `MockAgentPlanner` (`model: mock-qwen`) whose scenario is **not** hard-coded into the real
 agent, and conservative per-route merging of tool results into the agent context (candidate
 authoritative, conflicts reported) that populates `PlanResponse.legs`. The A4 seam, the A5 loop, the
-A6 engine and the canonical nine states are all **unchanged** — A7 only feeds them. The rest of the
-agent (streaming/status endpoints, replanning, execution, real B/C intelligence) is built in **A8+**.
-During **A7**, do **not** implement later-phase agent logic or real Workstream B/C functionality
+A6 engine and the canonical nine states are all **unchanged** — A7 only feeds them. **A8 — Agent
+Experience / UI** then presents the same single-shot response through the polished two-column UI
+without touching the backend. **A9 — Agent & API Stabilization, Observability & Integration
+Readiness** freezes the result as the B/C baseline (§20): still no new states, tools or endpoints —
+only a per-request `request_id`, structured observability logs, a machine-readable action `kind`,
+honest planner provenance, a typed `503` for an unreachable model, and regression-locked
+isolation/determinism. The rest of the
+agent (streaming/status endpoints, replanning, execution, real B/C intelligence) is built in **A10+
+or Workstreams B/C** — streaming was explicitly **decided against** in A9.
+During **A9**, do **not** implement later-phase agent logic or real Workstream B/C functionality
 (no XGBoost/LSTM, no GTFS/GTFS-RT, no PostGIS, no live transit APIs, no booking) — only keep this
 spec consistent so all future work aligns.
+
+---
+
+## 20. Observability, correlation & run metadata (A9)
+
+A9 adds **no** tracing platform and **no** new dependency — it extends the existing logging
+foundation (`app/logging_config.py`) with two small helpers and a fixed event vocabulary.
+
+- **Request correlation (§10-class):** every execution gets a lightweight `request_id`
+  (`req_<12 hex>`) that identifies *one run*, never a user. It travels from the HTTP layer
+  (`X-Request-Id` response header) through the agent context to `PlanResponse.request_id`, so a
+  user-visible response can be matched to the backend log lines of that exact run.
+- **Structured events (§9-class):** one `event=<name> key=value …` line per milestone —
+  `request.received` → `agent.start` → (`tool.selected` → `tool.executed` | `tool.failed`)×n →
+  `decision.completed` → `agent.completed` | `agent.errored` → `plan.responded`. Values are short
+  summaries only: identifiers, counts, durations, state names, tool names, error **class** names.
+- **Run metadata (§11-class):** the context records `iteration_count`, `tool_call_count` (a
+  duplicate-suppressed call is *not* counted — it never reached the tool layer), per-tool
+  `duration_ms` on the failure/success log line, and total `duration_ms` at the end of the run.
+- **Action typing (§5-class):** each `AgentAction` carries an additive, optional `kind` ∈
+  `{understanding, clarification, planning, tool_call, evaluation, completion}` so a consumer can
+  group/render the trace without special-casing each phase. Ordering stays deterministic
+  (`seq = position in the trace`).
+- **Never logged / never exposed:** API keys or credentials, passwords, the traveller's raw
+  natural-language text, full tool payloads, and hidden chain-of-thought. The Qwen client logs only
+  the exception **class** on failure (the request headers carry the key); the action trace redacts
+  secret-like tool-arg keys (`_SENSITIVE_ARG_KEYS`) and truncates long values.

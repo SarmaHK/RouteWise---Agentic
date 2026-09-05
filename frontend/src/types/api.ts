@@ -113,6 +113,12 @@ export interface AgentAction {
   status?: string;
   timestamp?: string | null;
   data_source?: DataSource | null;
+  /**
+   * A9 additive: the machine-readable action type — understanding | clarification | planning |
+   * tool_call | evaluation | completion. Optional, so older responses still parse; the timeline
+   * renders from `state`/`label` regardless and never special-cases on it.
+   */
+  kind?: string | null;
 }
 
 /**
@@ -194,6 +200,9 @@ export interface Recommendation {
  * **A7 changes no field.** `legs` now carries the recommended route's leg detail, and
  * `agent_actions` may hold several tool calls (search + fare + delay + details) in a
  * planner-selected order — all still `data_source: mock`.
+ *
+ * **A9 (additive):** `request_id` correlates this response with the backend logs and the
+ * `X-Request-Id` response header. It identifies one execution, never a user, and may be absent.
  */
 export interface PlanResponse {
   status: AgentState;
@@ -203,4 +212,6 @@ export interface PlanResponse {
   alternatives?: Recommendation[];
   agent_actions: AgentAction[];
   reasoning?: string | null;
+  /** A9 additive: per-execution correlation id (matches the X-Request-Id header). */
+  request_id?: string | null;
 }

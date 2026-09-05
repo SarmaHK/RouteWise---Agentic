@@ -364,7 +364,7 @@ Full definitions + scoring model: [`AGENT_SPEC.md` §8–10](AGENT_SPEC.md).
     timeline (state → `--state-*` via CSS `data-state`, never chosen in TS) with expandable **mono**
     tool calls marked ✓/✗ from each call's real status, plus a progress **stepper** derived only from
     states the run actually visited. Loading is an honest indeterminate "Working…" (the API is
-    single-shot until A9) — no faked stage, no generic spinner.
+    single-shot — confirmed as the final mechanism in A9) — no faked stage, no generic spinner.
   - **Route presentation** (§12.10): the recommended `RouteCard` (primary accent + "Recommended" + a
     mock-data tag) shows a metrics grid (duration, fare, transfers, walking, budget fit, delay risk,
     fit score) and its `RouteTimeline` of `TransportLeg`s (per-mode icon, per-leg `DelayBadge`);
@@ -381,15 +381,41 @@ Full definitions + scoring model: [`AGENT_SPEC.md` §8–10](AGENT_SPEC.md).
   - **Scope:** presentation only. No streaming/SSE/WebSocket or new status endpoint (A9), no
     execution/booking, no disruption replanning, no ML/database/GTFS, no Travel Pass, no cloud —
     all route data is still **mock**.
+- **Phase A9 — Agent & API Stabilization, Observability & Integration Readiness: COMPLETE.** The
+  A1–A8 pipeline is now predictable, observable and frozen as the B/C integration baseline — **no
+  new features, states, tools, endpoints or dependencies**:
+  - **Request correlation:** every execution carries a lightweight `request_id` (never tied to a
+    user), echoed as the `X-Request-Id` response header and on `PlanResponse.request_id`.
+  - **Structured observability:** `event=… key=value` log lines mark `request.received`,
+    `agent.start`, `tool.selected`, `tool.executed` / `tool.failed` (with per-call `duration_ms`),
+    `decision.completed`, `agent.completed` / `agent.errored`, `plan.responded`; the run records
+    `iteration_count` / `tool_call_count` / total `duration_ms`. No API keys, no raw request text,
+    no hidden chain-of-thought in any log.
+  - **Action contract:** every `agent_actions[]` entry now carries a machine-readable `kind`
+    (`understanding | clarification | planning | tool_call | evaluation | completion`) — additive
+    and optional, so the A8 frontend renders it without per-phase special-casing.
+  - **Honest provenance + errors:** the PLANNING action reports the real planner
+    (`data_source`/`model`) instead of a hard-coded `mock`; an unreachable live model is a typed,
+    retryable `503` (`service_unavailable`) — distinct from malformed model output (`502`) and
+    internal bugs (`500`); tool error text is capped (`_MAX_TOOL_ERROR_DETAIL`) so a verbose
+    upstream exception cannot flood the trace.
+  - **Isolation & determinism (regression-locked):** fresh execution context per request, no
+    cross-request leakage, identical repeated mock requests decide identically, and the iteration
+    limit now marks its final action `status: "error"` instead of a misleading `"done"`.
+  - **Contract freeze:** `TravelRequest`, `Candidate`, `ToolResult`, `ToolCall`, `AgentAction`,
+    `Recommendation`, `PlanResponse` are the B/C baseline; A9's only contract changes are the two
+    additive fields above. Delivery stays **single-shot** — the reserved agent status/stream
+    endpoints were explicitly **decided against** (no SSE/WebSocket).
+  - **Scope:** strictly Workstream A stabilization. No new states, no streaming, no real B/C
+    functionality, no A10 work. All route data is still **mock**.
 - **No route-planning features beyond A8's presentation layer (by design).** No
   execution/booking, disruption replanning, ML, database, GTFS, automation, or Travel Pass are
-  built yet — those belong to A9+ / Workstream B / Workstream C. All route data is **mock**.
+  built yet — those belong to A10+ / Workstream B / Workstream C. All route data is **mock**.
 - **Honesty:** real Qwen connectivity is **not** claimed unless a key is configured; with no key the
   backend uses the mock extractor/client **and the mock tool-calling planner** (see
   [`AGENT_SPEC.md` §15](AGENT_SPEC.md)).
-- **Next (when instructed):** Workstream A phase **A9 — Final API & Agent State** (a stable
-  `POST /api/route/plan` + a real agent-status endpoint / streaming); B and C proceed against
-  the agreed interfaces.
+- **Next (when instructed):** Workstream A phase **A10 — Workstream B Handover** (contracts + mocks
+  ready for B to replace); B and C proceed against the agreed interfaces.
 
 ---
 
@@ -405,7 +431,7 @@ Full definitions + scoring model: [`AGENT_SPEC.md` §8–10](AGENT_SPEC.md).
 | **A6** | **Route Decision Engine** ✅ | Constraint-aware candidate evaluation: structured hard-constraint violations, defensive/malformed-candidate handling, robust normalization, preference-weighted + delay-aware scoring, deterministic ranking, grounded reasons/strengths/trade-offs. |
 | **A7** | **Mock Intelligence Integration** ✅ | Complete deterministic mock environment behind the B boundary: one shared mock route-truth module, `get_fare_estimate` / `get_delay_prediction` / `get_route_details` as `AVAILABLE` mock tools, `ROUTE_NOT_FOUND`, a multi-step `MockAgentPlanner` (`mock-qwen`), conservative per-route result merging + populated `legs`, and an end-to-end agent validation (golden trace). |
 | **A8** | **Agent Experience / UI** ✅ | Two-column shell + agent-activity rail (real `agent_actions[]` timeline + progress stepper), route presentation (recommended/alternative `RouteCard`s, legs, delay/fare/budget), the registered `ui`/`agent`/`travel` components, and honest loading/empty/error/clarification states — presentation only, tokens only, no new dependencies. |
-| A9 | Final API & Agent State | Stable `POST /api/route/plan`, agent status API. |
+| **A9** | **Final API & Agent State** ✅ | Agent & API stabilization: per-request `request_id` correlation, structured observability logs, action `kind` contract, honest planner provenance, typed `503` model-unavailable error, capped tool-error detail, isolation/determinism regression suite — the frozen B/C integration baseline (single-shot; no streaming, by decision). |
 | A10 | Workstream B Handover | Contracts + mocks ready for B to replace. |
 
 **Do not automatically continue past the current phase.** Wait for instruction.

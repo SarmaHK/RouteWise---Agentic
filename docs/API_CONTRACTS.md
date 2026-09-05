@@ -22,16 +22,17 @@ used throughout, so no reader mistakes a plan for a built feature:
 
 | Contract element | Status | Owner / phase |
 |------------------|--------|---------------|
-| `POST /api/route/plan` shape (§2) | CURRENT (implemented) | A — **A3 agent decision** (mock candidates + deterministic scoring); real transit data A9 |
+| `POST /api/route/plan` shape (§2) | CURRENT (implemented; **frozen as the B/C integration baseline in A9**) | A — **A3 agent decision** (mock candidates + deterministic scoring); real transit data is Workstream B (post-A9) |
 | `TravelRequest` normalized-request shape (§2.1) | CURRENT (implemented) | A — A2 |
+| `request_id` + `X-Request-Id` response header (§2) | CURRENT (implemented, **additive in A9**) | A — A9 |
 | `GET /health` liveness probe (§2) | CURRENT (implemented) | A — A1 |
 | Route / leg / recommendation shapes (§3) | CURRENT (mock) | A → B (real data) |
-| `agent_actions[]` shape (§4) | CURRENT (A4 `availability`/`data_source`; **A5 `error_code`** — all additive) | A |
+| `agent_actions[]` shape (§4) | CURRENT (A4 `availability`/`data_source`; **A5 `error_code`**; **A9 `kind`** — all additive) | A |
 | Error envelope (§5) | CURRENT | A |
 | `search_routes`, `get_fare_estimate`, `get_delay_prediction`, `get_route_details` (§6) | CURRENT signature + **CURRENT mock impl (A7, `data_source: mock`)** / FUTURE real impl | A mocks → B implements |
 | `check_availability`, `prepare_booking` (§6) | CURRENT signature / FUTURE impl (still honest `NOT_IMPLEMENTED` stubs after **A7**) | C |
-| Delivery mechanism: single response vs SSE/WebSocket (§4) | CURRENT (single response — **A5** runs the whole loop in-request, no streaming); SSE/WebSocket FUTURE | A — streaming decided A8/A9 |
-| `GET /api/agent/status`, `GET /api/agent/stream` (§7) | FUTURE (reserved) | A — decided A8/A9 |
+| Delivery mechanism: single response vs SSE/WebSocket (§4) | CURRENT (single response — **decided in A9**: the whole bounded loop runs in-request; no SSE/WebSocket/streaming) | A — **decided A9** |
+| `GET /api/agent/status`, `GET /api/agent/stream` (§7) | FUTURE (reserved — **A9 decision: stay reserved, not built**) | A |
 | Live GTFS/GTFS-RT, PostGIS, real ML, real booking, cloud deploy | FUTURE | B / C |
 
 > **Rule:** a FUTURE item must never be presented as CURRENT in code, UI, or the demo. Mocks
@@ -65,7 +66,8 @@ used throughout, so no reader mistakes a plan for a built feature:
 Submit a travel request; receive the agent's plan/recommendation.
 
 - **Owner:** Workstream A.
-- **Status:** the **real** transit-data planning lands in **A9 — Final API & Agent State**.
+- **Status:** **implemented** through A7 and **stabilized + frozen as the B/C integration
+  baseline in A9** (real transit data stays FUTURE — Workstream B behind this same contract).
   **A1 shipped an honest foundation stub** (`status: IDLE`); **A2 implemented Travel Request
   Understanding** (extraction into a `TravelRequest`, §2.1). **A3 now implements the agent
   orchestration & decision layer** at this path: after extraction it drives the canonical state
@@ -86,7 +88,17 @@ Submit a travel request; receive the agent's plan/recommendation.
   `legs` is populated for the recommended route. All four read one shared deterministic mock
   dataset (`data_source: mock`); an unknown route id is a structured `ROUTE_NOT_FOUND` failure,
   never invented data. The **A6 decision engine still makes the choice** — A7 only informs it.
-  Real transit search / ML scoring remains FUTURE (Workstream B, surfaced in A9).
+  Real transit search / ML scoring remains FUTURE (Workstream B, post-A9).
+
+  **A9 — Agent & API Stabilization (implemented).** No field was removed, retyped or renamed, and
+  no endpoint was added. Three **additive** changes: the response gains an optional `request_id`
+  (echoed in the `X-Request-Id` response header — one id per execution, correlating the body, the
+  logs and the actions), and `agent_actions[]` entries gain an optional machine-readable `kind`
+  (`understanding \| clarification \| planning \| tool_call \| evaluation \| completion`). An
+  unreachable **live** AI service (extraction or planning) is now a distinguishable, retryable
+  `503` (§5) instead of an opaque `500`. Under mock mode a repeated identical request is
+  **deterministic**, and one request's execution state is fully isolated from the next — both
+  locked in by A9 regression tests.
 
 #### Request (conceptual)
 
@@ -137,19 +149,21 @@ Submit a travel request; receive the agent's plan/recommendation.
   "legs": [],
   "alternatives": [],
   "agent_actions": [],
-  "reasoning": "..."
+  "reasoning": "...",
+  "request_id": "req_9f4c2ab1d703"
 }
 ```
 
 | Field | Type | Notes |
 |-------|------|-------|
-| `status` | enum | One of the canonical **Agent states** ([`AGENT_SPEC.md` §5](AGENT_SPEC.md)): `IDLE, UNDERSTANDING, PLANNING, SEARCHING, EVALUATING, EXECUTING, REPLANNING, COMPLETED, ERROR`. **A3 returns `COMPLETED`** with a mock decision, or **`UNDERSTANDING`** when clarification is required (the agent stops before deciding); live-data planning matures in A9. |
+| `status` | enum | One of the canonical **Agent states** ([`AGENT_SPEC.md` §5](AGENT_SPEC.md)): `IDLE, UNDERSTANDING, PLANNING, SEARCHING, EVALUATING, EXECUTING, REPLANNING, COMPLETED, ERROR`. Returns **`COMPLETED`** with a mock decision, or **`UNDERSTANDING`** when clarification is required (the agent stops before deciding); real (live) transit data stays FUTURE (Workstream B). |
 | `request` | object | The **normalized/extracted** `TravelRequest` (§2.1) the agent understood: origin, destination, hard constraints, soft preferences, and any **missing info**/clarification it detected. Lets the UI echo constraints back. |
 | `recommendation` | object | The chosen route + rationale. See §3. |
 | `legs` | array | Ordered legs of the recommended route. See §3. **Populated from A7** (`get_route_details` mock intelligence); empty before that. |
 | `alternatives` | array | Other candidate routes with trade-offs (same shape as recommendation). |
 | `agent_actions` | array | Ordered log of what the agent did: states entered, tools called, results summary, decisions. Drives the Agent activity UI. See §4. |
 | `reasoning` | string? | **Added in A3** (additive, §9). A concise, observable explanation of the decision or clarification (feeds `ReasoningSummary`, [`DESIGN_SYSTEM.md` §12.9](DESIGN_SYSTEM.md)). Never hidden chain-of-thought. |
+| `request_id` | string? | **A9 (additive, §9).** Per-execution correlation id — matches the `X-Request-Id` response header and the `request_id=…` field in the backend logs. Identifies one execution, never a user; not persisted. |
 
 #### 2.1 `TravelRequest` — the normalized request (A2)
 
@@ -197,7 +211,7 @@ Every travel-specific field is **optional** — the extractor **never invents** 
 An infrastructure probe (not part of the versioned `/api` surface), mounted at the **root**:
 
 ```json
-{ "status": "ok", "service": "routewise-agentic-backend", "phase": "A2-understanding" }
+{ "status": "ok", "service": "routewise-agentic-backend", "phase": "A9-stabilization" }
 ```
 
 - **Owner:** Workstream A. **Status:** implemented in A1.
@@ -312,6 +326,7 @@ An ordered log the frontend renders via `AgentActivity`/`AgentStep`.
 {
   "seq": 3,
   "state": "SEARCHING",
+  "kind": "tool_call",
   "label": "Searching routes & checking conditions",
   "detail": "Querying candidate routes Colombo Fort → Ella",
   "tool_call": {
@@ -329,17 +344,18 @@ An ordered log the frontend renders via `AgentActivity`/`AgentStep`.
 
 | Field | Type | Notes |
 |-------|------|-------|
-| `seq` | number | Order in the timeline. |
+| `seq` | number | Order in the timeline (1-based, contiguous, deterministic — A9 regression-tested). |
 | `state` | enum | Canonical Agent state. |
+| `kind` | string? | **A9 (additive):** the machine-readable action type — `understanding` \| `clarification` \| `planning` \| `tool_call` \| `evaluation` \| `completion`. Lets a consumer group or render the trace **without per-phase special-casing**; optional, so older responses still parse. Never exposes chain-of-thought. |
 | `label` / `detail` | string | Human-facing text. |
 | `tool_call` | object? | Present when this step called a tool (§6). `status`: `pending\|running\|done\|error`. **A4 (additive):** `availability` (`available\|not_implemented\|disabled\|error`) and `data_source` (`mock\|simulated\|live`) — both optional, so the A3 shape is unchanged. **A5 (additive):** `error_code` (string?, e.g. `INVALID_INPUT` / `UNKNOWN_TOOL` / `NOT_IMPLEMENTED` / `REPEATED_CALL` / **`ROUTE_NOT_FOUND` (A7)**) — present only when a call failed or was suppressed, so the A4 shape is unchanged; `args` are **sanitized** (secret-like keys redacted, over-long strings truncated) and never expose chain-of-thought. **A7** adds no field here — it only means one trace can now carry several `mock` data-tool calls (search + fare + delay + details). |
 | `status` | enum | Step status: `pending \| active \| done \| error`. |
 | `timestamp` | string (ISO 8601) | When it happened. |
 
-> **Delivery mechanism** (single response vs. streaming/SSE/WebSocket) is a **later-phase
-> decision**. The frontend hides it behind `useAgentStream()` (see
-> [`ARCHITECTURE.md`](ARCHITECTURE.md)); the action **shape stays the same**
-> either way.
+> **Delivery mechanism — DECIDED in A9:** the plan response is a **single in-request JSON**
+> response; the whole bounded loop completes before the response is sent. No SSE, WebSocket or
+> incremental streaming is introduced (A9 scope rules), and the frontend consumes the completed
+> `agent_actions[]` array directly. The reserved endpoints in §7 stay FUTURE.
 
 ---
 
@@ -366,14 +382,16 @@ All errors return a consistent body plus an appropriate HTTP status.
 | `404` | Unknown resource (e.g., place not found in mock gazetteer). |
 | `500` | Unexpected server error. |
 | `502` | Upstream extraction produced invalid output (A2) — mapped to `code: bad_gateway`. Malformed model output is rejected, never silently accepted. |
-| `503` | Downstream/tool unavailable (mock or real). |
+| `503` | Downstream/tool unavailable (mock or real). **Used from A9:** the configured **live** AI service (extraction or planning) is unreachable — mapped to `code: service_unavailable`, `retryable: true`. Distinct from `502` (the model answered but its output was invalid) and from `500` (an internal bug). |
 
 - `error.code` is a **stable machine string** (clients may branch on it); `message` is
   human-readable and safe to show. `details` holds non-sensitive technical context.
-- Domain "no result" cases (e.g., nothing within budget) may be returned as `200` with
-  `status: "ERROR"` or `COMPLETED` + empty `recommendation` + explanatory `agent_actions` —
-  **decide once in A6/A9 and document it here.** Prefer a `200` with a clear explanation over
-  an HTTP error for legitimate "no good route" outcomes.
+- **Decided (A9):** domain "no result" cases (e.g., nothing within budget, an unknown corridor)
+  are returned as **`200` with `status: "COMPLETED"` + `recommendation: null` + honest `reasoning`
+  and `agent_actions`** — never `status: "ERROR"` (the run itself succeeded; there is simply no
+  good route) and never an HTTP error. The same rule covers the `MAX_AGENT_ITERATIONS` stop: the
+  run still ends `COMPLETED` with **no fabricated recommendation**, and its closing action carries
+  `status: "error"` so the trace never claims success.
 
 ---
 
@@ -440,8 +458,10 @@ If live agent activity is streamed rather than embedded, reserve:
 - `GET /api/agent/status` → current canonical Agent state + last few `agent_actions`.
 - `GET /api/agent/stream` (SSE) → incremental `agent_actions` as they occur.
 
-**Status:** reserved; **not** decided/built in A1. Choose the mechanism in A5/A8/A9 and
-record the final decision here.
+**Status — DECIDED in A9:** **not built, and they stay reserved.** The delivery mechanism is the
+single in-request `POST /api/route/plan` response (§4): the frontend needs no polling or
+streaming endpoint, and the A9 scope rules explicitly exclude SSE/WebSocket work. These two paths
+remain the agreed extension point if a later phase ever needs live progress.
 
 ---
 
@@ -482,6 +502,12 @@ This document is the contract. Once the frontend or backend consumes a shape:
     **valid runners-up first (by `rank`), then excluded candidates**, and an excluded card carries
     `score: null` / `rank: null` / `valid: false` plus its structured violations (previously only a
     free-text `trade_offs` entry).
+  - **A9 (stabilization):** added `PlanResponse.request_id` (optional string) + the `X-Request-Id`
+    response header, and `AgentAction.kind` (optional string). All additive; no field was removed
+    or retyped, no endpoint or path changed, and the frontend mirrors both in `src/types/api.ts`.
+    Behaviorally, a previously-uncaught **live-AI outage** now maps to `503 service_unavailable`
+    (was an opaque `500`) — an error-contract improvement, not a shape change. **This contract is
+    now the frozen Workstream B/C integration baseline** (A9 brief §16).
 - **Breaking** changes require a proposal + version bump (§1.6) and updates to consumers.
 - Never change a contract silently in code without updating this file in the same change.
 

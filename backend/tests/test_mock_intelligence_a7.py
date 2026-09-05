@@ -1170,7 +1170,10 @@ def test_api_exposes_the_richer_mock_trace(client: Any) -> None:
     assert len(body["agent_actions"]) == 14
     assert _deduped([a["state"] for a in body["agent_actions"]]) == [s.value for s in _CANONICAL]
     assert all(a["data_source"] == "mock" for a in body["agent_actions"])
-    # No field was added or removed from the A3/A6 response contract.
+    # No field was added or removed from the A3/A6 response contract — except the one ADDITIVE A9
+    # correlation field, ``request_id`` (A9 brief §10/§16: additive changes are allowed), which
+    # matches the X-Request-Id response header.
+    assert body["request_id"] == response.headers["x-request-id"]
     assert set(body) == {
         "status",
         "request",
@@ -1179,5 +1182,6 @@ def test_api_exposes_the_richer_mock_trace(client: Any) -> None:
         "alternatives",
         "agent_actions",
         "reasoning",
+        "request_id",  # A9 additive (§10): the per-execution correlation id
     }
 

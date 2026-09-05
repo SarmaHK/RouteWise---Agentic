@@ -6,8 +6,8 @@
  *
  * While a request is in flight (`busy`) it shows an honest "Working…" with a pulsing dot rather
  * than claiming a canonical stage that has not been reported yet (A8 brief §25: never fake
- * progress). The single-shot A8 API returns the whole trace at once — real incremental state
- * streaming is A9.
+ * progress). The API is single-shot BY DESIGN — A9 brief §25 rules out SSE/WebSocket/streaming —
+ * so the trace arrives whole and there is no incremental state to render.
  */
 
 import type { AgentState } from '../../types/api';

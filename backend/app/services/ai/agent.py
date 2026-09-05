@@ -163,7 +163,20 @@ class PlannerContext:
 
 
 class AgentPlanner(ABC):
-    """One interface for "given the context, what should the agent do next?"."""
+    """One interface for "given the context, what should the agent do next?".
+
+    **A9 (provenance honesty, brief §14):** each implementation also declares *what* is doing the
+    planning, before any decision exists. The orchestrator uses these two attributes for the
+    ``PLANNING`` action's ``data_source`` and for the ``agent.start`` log line, so a run planned by
+    the deterministic mock is never labelled ``live`` and a run planned by real Qwen is never
+    labelled ``mock``. They describe the **planner only** — route facts stay ``mock`` until
+    Workstream B supplies real data, whichever planner is active.
+    """
+
+    #: Identifier of the model/strategy doing the planning (never a secret, never a credential).
+    model: str = "unknown"
+    #: Honesty flag for the planning step itself.
+    data_source: Literal["live", "mock"] = "mock"
 
     @abstractmethod
     def next_decision(self, ctx: PlannerContext) -> AgentDecision:
@@ -349,8 +362,14 @@ def _parse_tool_calls(message: dict[str, Any]) -> list[ToolCallRequest]:
 class QwenAgentPlanner(AgentPlanner):
     """Decides the next step using the EXISTING Qwen ``AIClient`` (no second client — A5 §5)."""
 
-    def __init__(self, client: AIClient) -> None:
+    #: A9 §14: this planner really does call the configured model, so it is labelled ``live``.
+    data_source: Literal["live", "mock"] = "live"
+
+    def __init__(self, client: AIClient, model: str = "qwen") -> None:
         self._client = client
+        # The configured model id, used for provenance *before* the first response arrives; each
+        # AgentDecision still carries the model the response actually reported.
+        self.model = model
 
     def next_decision(self, ctx: PlannerContext) -> AgentDecision:
         kwargs: dict[str, Any] = {"temperature": 0}
@@ -411,6 +430,11 @@ class MockAgentPlanner(AgentPlanner):
     def __init__(self, max_routes_per_tool: int = _DEFAULT_MAX_ROUTES_PER_TOOL) -> None:
         #: Upper bound on route-scoped calls per capability (keeps the offline trace readable).
         self._max_routes_per_tool = max(1, max_routes_per_tool)
+
+    #: A9 §14: the deterministic offline planner is labelled ``mock``/``mock-qwen`` everywhere, so
+    #: it can never be mistaken for a real model run.
+    model = _MOCK_MODEL
+    data_source: Literal["live", "mock"] = "mock"
 
     def next_decision(self, ctx: PlannerContext) -> AgentDecision:
         # 1. Without candidate ids there is nothing route-scoped to ask about, so the only useful
@@ -481,7 +505,7 @@ class MockAgentPlanner(AgentPlanner):
 def build_planner(settings: Settings) -> AgentPlanner:
     """Return a Qwen-backed planner when a key exists, else the deterministic mock."""
     if settings.ai_enabled:
-        return QwenAgentPlanner(build_ai_client(settings))
+        return QwenAgentPlanner(build_ai_client(settings), model=settings.model_name)
     return MockAgentPlanner()
 
 

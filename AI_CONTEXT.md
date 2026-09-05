@@ -117,56 +117,50 @@ A4 Agent Tool System              ✅ implemented / tool contract + registry + e
 A5 Tool-Calling Orchestrator      ✅ implemented / bounded multi-step Qwen tool loop
 A6 Route Decision Engine          ✅ implemented / refined deterministic decision engine
 A7 Mock Intelligence Integration  ✅ implemented / four AVAILABLE mock tools + end-to-end agent proof
-A8 Agent Experience / UI          ← current / two-column agent-experience UI (presentation only)
-A9 Final API & Agent State
+A8 Agent Experience / UI          ✅ implemented / two-column agent-experience UI (presentation only)
+A9 Final API & Agent State        ← current / stabilization, observability & integration readiness
 A10 Workstream B Handover
 ```
 
-**CURRENT PHASE: A8 — Agent Experience / UI (turn the functional A1–A7 flow into a polished,
-judge-facing UI that visually communicates the agentic workflow — an autonomous travel coordinator,
-not a chatbot).**
+**CURRENT PHASE: A9 — Agent & API Stabilization, Observability & Integration Readiness (make the
+A1–A8 pipeline predictable, observable and safe to integrate — no new features, no architecture
+redesign).**
 
-Do **not** auto-advance into A9 or any later phase. Wait for an explicit human instruction. A8 is
-**presentation only** — it does not change the backend, the `POST /api/route/plan` contract, the nine
-canonical states, or any response field; it renders the **existing** single-shot response.
+Do **not** auto-advance into A10 or any later phase. Wait for an explicit human instruction. A9 is
+**stabilization only** — it adds no states, tools, endpoints, dependencies or UI features; it makes
+the existing single-shot `POST /api/route/plan` pipeline consistent and observable.
 
-- **Two-column app shell.** `App.tsx` is now **shell-only** (header brand · "Phase A8" badge · a live
-  backend `StatusIndicator` · footer); all plan state lives in one feature slice,
-  `frontend/src/features/route-planner/`. At ≥`lg` (1024px) a persistent **Agent activity rail** sits
-  beside the main column and stacks below it on smaller screens (DESIGN_SYSTEM §12.1). No chat UI, no
-  bubbles.
-- **Registered components are built** (DESIGN_SYSTEM §13): `components/ui/` (Button · Badge · Card ·
-  StatusIndicator · **Alert**), `components/agent/` (AgentActivity · AgentStep · AgentStatus ·
-  ReasoningSummary), `components/travel/` (TripForm · RouteCard · RouteTimeline · TransportLeg ·
-  FareDisplay · DelayBadge · **ModeIcon** · **TravelRequestSummary**). `TravelPass` stays a
-  Workstream-C contract. Three new registry rows (Alert, ModeIcon, TravelRequestSummary) were added
-  before building (§13.5). **Tokens only** — no new colors/type/spacing/visual language.
-- **Honest agent activity** (§12.9): the rail renders the real `agent_actions[]` trace as a colored
-  timeline (state → `--state-*` via CSS `data-state`, never chosen in TS), each tool call expandable
-  as **mono** and marked ✓/✗ from its real `status`; a progress **stepper** fills only from states the
-  run actually visited. Because the API is **single-shot** until A9, loading is an honest
-  indeterminate "Working…" + skeletons — no faked stage, no generic spinner.
-- **Route presentation** (§12.10): the recommended `RouteCard` (primary accent + "Recommended" + a
-  mock-data tag) shows a metrics grid (duration, fare, transfers, walking, budget fit, delay risk, fit
-  score) and its `RouteTimeline` of `TransportLeg`s (per-mode `ModeIcon`, per-leg `DelayBadge`);
-  alternatives show strengths + trade-offs and an excluded route keeps its structured violation.
-- **Mock honesty** (AGENT_SPEC §15–16): fares read "Estimated", delays "Simulated … — mock data",
-  every card carries its `data_source`; nothing is labeled live/confirmed/real-time.
-- **Discipline:** components call the backend only through `services/api` (no `fetch` in components);
-  formatters + the agent-state map live in `services/format.ts` / `services/agentState.ts`; no
-  decision logic or route scoring in React. Dependency-light kept — **no** new npm packages, **no**
-  state library, **no** test runner (UI verified by `tsc --noEmit` strict + the production build + the
-  backend suite + manual DOM checks).
+- **Correlation + observability:** every run carries a lightweight `request_id` (echoed as the
+  `X-Request-Id` response header and on `PlanResponse.request_id`), and the backend emits structured
+  `event=… key=value` log lines (`request.received`, `agent.start`, `tool.selected`,
+  `tool.executed`/`tool.failed`, `decision.completed`, `agent.completed`/`agent.errored`,
+  `plan.responded`) — never an API key, never the traveller's raw text, never hidden chain-of-thought.
+- **Action contract:** every `agent_actions[]` entry carries a machine-readable `kind`
+  (`understanding | clarification | planning | tool_call | evaluation | completion`) alongside
+  `seq`/`state`/`label`/`status`/`data_source` — the frontend renders the trace generically, with no
+  per-phase special-casing.
+- **Honest provenance:** the PLANNING action reports the *planner's* `data_source`/`model` (live
+  Qwen vs deterministic mock) instead of a hard-coded `mock`; route facts stay `mock` either way.
+- **Error contract:** an unreachable live model is a typed, retryable `503` (`service_unavailable`),
+  distinct from malformed model output (`502`) and internal bugs (`500`); tool error messages are
+  capped so a verbose upstream exception cannot flood the trace.
+- **Isolation & determinism:** each request gets a fresh execution context (regression-tested); the
+  mock pipeline is deterministic — same request + same mock data ⇒ same recommendation.
+- **Integration baseline frozen:** `TravelRequest`, `Candidate`, `ToolResult`, `ToolCall`,
+  `AgentAction`, `Recommendation`, `PlanResponse` are the B/C baseline. A9's only contract changes
+  are **additive + optional** (`AgentAction.kind`, `PlanResponse.request_id`).
 
 The data behind the UI is still the **A7 mock intelligence** (one shared dataset in
 `backend/app/tools/intelligence.py`; four `AVAILABLE` mock tools). The golden Colombo Fort → Ella demo
 still resolves to **R1 (score 0.472)** over **R2 (0.408)**, with **R3 excluded** on the LKR 2,000
-budget — A8 changes how that result *looks*, not what it *is*.
+budget — A9 changes how a run is *identified, measured and logged*, not what it *decides*.
 
 All route data is still **mock**: no XGBoost, no LSTM, no PostgreSQL/PostGIS, no GTFS or GTFS-RT, no
-external transit API, no browser automation, no booking, no Travel Pass. Workstream B later replaces
-the provider *behind* these exact tool signatures (`app/tools/intelligence.py` is the documented
-replacement point). Do not start real Workstream B/C work or A9+ logic — those are later phases.
+external transit API, no browser automation, no booking, no Travel Pass, **no streaming/SSE/WebSocket**
+(the single-shot response is the decided delivery mechanism — the reserved status/stream endpoints
+stay unbuilt). Workstream B later replaces the provider *behind* these exact tool signatures
+(`app/tools/intelligence.py` is the documented replacement point). Do not start real Workstream B/C
+work or A10+ logic — those are later phases.
 
 ---
 
