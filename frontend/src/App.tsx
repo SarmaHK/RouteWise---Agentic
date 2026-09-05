@@ -14,7 +14,18 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import { env } from './config/env';
-import { ApiError, getHealth, planRoute } from './services/api';
+import {
+  ApiError,
+  getHealth,
+  planRoute,
+  replanRoute,
+  prepareBookingHold,
+  getTravelPass,
+  injectDisruption,
+  restoreDisruption,
+  type BookingHoldResponse,
+  type TravelPassData,
+} from './services/api';
 import type { HealthResponse, PlanResponse, Recommendation, TravelRequest } from './types/api';
 import './App.css';
 
@@ -129,6 +140,102 @@ export default function App() {
       setPlan({ status: 'success', data });
     } catch (error) {
       setPlan({ status: 'error', error: describeError(error) });
+    }
+  }, [rawText]);
+
+  const [holdState, setHoldState] = useState<{
+    status: Status;
+    data?: BookingHoldResponse;
+    error?: string;
+  }>({ status: 'idle' });
+
+  const [travelPass, setTravelPass] = useState<{
+    status: Status;
+    data?: TravelPassData;
+    error?: string;
+    visible: boolean;
+  }>({ status: 'idle', visible: false });
+
+  const [disruptionState, setDisruptionState] = useState<{
+    active: boolean;
+    loading: boolean;
+    notice?: string;
+  }>({ active: false, loading: false });
+
+  const handleHoldBooking = useCallback(async (routeId: string) => {
+    setHoldState({ status: 'loading' });
+    try {
+      const res = await prepareBookingHold({
+        route_id: routeId,
+        traveler_name: 'Samantha Perera',
+        seats: 1,
+      });
+      setHoldState({ status: 'success', data: res });
+    } catch (err) {
+      setHoldState({ status: 'error', error: describeError(err) });
+    }
+  }, []);
+
+  const handleFetchTravelPass = useCallback(async () => {
+    const currentData = plan.status === 'success' ? plan.data : null;
+    if (!currentData) return;
+    setTravelPass((prev) => ({ ...prev, status: 'loading' }));
+    try {
+      const res = await getTravelPass({
+        plan: currentData,
+        booking_reference: holdState.data?.reference,
+        traveler_name: holdState.data?.traveler_name || 'Samantha Perera',
+        seats: holdState.data?.seats || 1,
+      });
+      setTravelPass({ status: 'success', data: res, visible: true });
+    } catch (err) {
+      setTravelPass((prev) => ({ ...prev, status: 'error', error: describeError(err) }));
+    }
+  }, [plan, holdState.data]);
+
+  const handleSimulateDisruption = useCallback(async () => {
+    setDisruptionState({
+      active: true,
+      loading: true,
+      notice: 'Landslide clearance operation on Main Line (55 min delay on train R1).',
+    });
+    try {
+      await injectDisruption({
+        trip_id: 'trip_train_mainline_1005',
+        delay_minutes: 55.0,
+        delay_risk: 'high',
+        alert_header:
+          'Landslide clearance operation between Hatton and Kotagala. Speed restriction 10 km/h.',
+      });
+      setPlan({ status: 'loading' });
+      const currentRec = plan.status === 'success' ? plan.data?.recommendation : null;
+      const replanned = await replanRoute({
+        request: { raw_text: rawText },
+        previous_recommendation_id: currentRec?.id || 'R1',
+        disruption_notice:
+          'Severe landslide disruption on Main Line train R1 (55 min delay). Autonomous re-planning engaged.',
+      });
+      setPlan({ status: 'success', data: replanned });
+      setHoldState({ status: 'idle' });
+      setDisruptionState((prev) => ({ ...prev, loading: false }));
+    } catch (err) {
+      setDisruptionState((prev) => ({ ...prev, loading: false }));
+      setPlan({ status: 'error', error: describeError(err) });
+    }
+  }, [rawText, plan]);
+
+  const handleRestoreDisruption = useCallback(async () => {
+    setDisruptionState({ active: false, loading: true });
+    try {
+      await restoreDisruption();
+      setPlan({ status: 'loading' });
+      const restoredPlan = await planRoute({ raw_text: rawText });
+      setPlan({ status: 'success', data: restoredPlan });
+      setHoldState({ status: 'idle' });
+      setDisruptionState({ active: false, loading: false });
+    } catch (err) {
+      setDisruptionState((prev) => ({ ...prev, loading: false }));
+      setPlan({ status: 'error', error: describeError(err) });
     }
   }, [rawText]);
 
@@ -297,6 +404,36 @@ export default function App() {
             </p>
           </div>
 
+          <div className="disruption-control-bar">
+            <span className="disruption-control-title">Coder Wake (Disruption &amp; Re-Planning):</span>
+            <button
+              type="button"
+              className="btn--warning-ghost"
+              onClick={handleSimulateDisruption}
+              disabled={disruptionState.loading || !data}
+            >
+              {disruptionState.loading ? 'Injecting Disruption…' : '⚠️ Simulate Landslide Disruption on Main Line (R1)'}
+            </button>
+            <button
+              type="button"
+              className="btn btn--secondary"
+              onClick={handleRestoreDisruption}
+              disabled={disruptionState.loading}
+            >
+              ↺ Restore Baseline
+            </button>
+          </div>
+
+          {disruptionState.active && (
+            <div className="alert alert--warning" role="alert" style={{ marginBottom: '16px' }}>
+              <span className="alert__icon">⚠️</span>
+              <div>
+                <strong>Coder Wake Disruption Active:</strong>{' '}
+                {disruptionState.notice || 'Main Line train disruption detected. Agent autonomously re-planned.'}
+              </div>
+            </div>
+          )}
+
           <div className="panel__actions">
             <button
               type="button"
@@ -456,6 +593,44 @@ export default function App() {
                     </div>
                   )}
 
+                  <div className="route-card__execution">
+                    {!holdState.data ? (
+                      <div className="execution-action-bar">
+                        <button
+                          type="button"
+                          className="btn btn--accent"
+                          onClick={() => handleHoldBooking(recommendation.id)}
+                          disabled={holdState.status === 'loading'}
+                        >
+                          {holdState.status === 'loading' ? 'Securing Hold…' : '⚡ Hold Reservation (Simulated 15m)'}
+                        </button>
+                        <span className="execution-hint">No payment debited · Safe temporary hold voucher</span>
+                      </div>
+                    ) : (
+                      <div className="hold-voucher-card">
+                        <div className="hold-voucher-head">
+                          <span className="badge--success">Reservation Held</span>
+                          <span className="hold-ref rw-mono">{holdState.data.reference}</span>
+                          <span className="tag">Expires in {holdState.data.expires_in_minutes}m</span>
+                        </div>
+                        <p className="hold-voucher-body">
+                          Temporary hold for <strong>{holdState.data.traveler_name}</strong> ({holdState.data.seats} seat).
+                          Simulated hold &mdash; no funds charged.
+                        </p>
+                        <div className="hold-voucher-actions">
+                          <button
+                            type="button"
+                            className="btn btn--primary"
+                            onClick={handleFetchTravelPass}
+                            disabled={travelPass.status === 'loading'}
+                          >
+                            🎫 {travelPass.status === 'loading' ? 'Generating Pass…' : 'View Offline Travel Pass'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
                   <p className="route-card__mock panel__meta">
                     Illustrative MOCK data (Phase A3) — not a live train/bus, fare, seat, or booking.
                   </p>
@@ -590,6 +765,107 @@ export default function App() {
             </div>
           )}
         </section>
+
+        {travelPass.visible && travelPass.data && (
+          <div className="travel-pass-modal" role="dialog" aria-modal="true">
+            <div
+              className="travel-pass-modal__backdrop"
+              onClick={() => setTravelPass((prev) => ({ ...prev, visible: false }))}
+            />
+            <div className="travel-pass-modal__card">
+              <div className="travel-pass-modal__head">
+                <h3 style={{ margin: 0, fontSize: '18px' }}>Offline Travel Pass</h3>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    type="button"
+                    className="btn btn--secondary"
+                    onClick={() => window.print()}
+                  >
+                    🖨️ Print
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn--secondary"
+                    onClick={() => setTravelPass((prev) => ({ ...prev, visible: false }))}
+                  >
+                    ✕ Close
+                  </button>
+                </div>
+              </div>
+
+              <div className="pass-surface">
+                <div className="pass-surface__header">
+                  <div>
+                    <h4 style={{ color: '#fff', margin: 0 }}>RouteWise Sri Lanka Transit Pass</h4>
+                    <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: '12px', margin: '4px 0 0 0' }}>
+                      National e-Ticketing Voucher &bull; Offline Validated
+                    </p>
+                  </div>
+                  <span className="badge badge--success">Offline Ready</span>
+                </div>
+
+                <div className="pass-surface__body">
+                  <div className="pass-surface__main">
+                    <div className="pass-journey-title">
+                      <span>{travelPass.data.origin}</span>
+                      <span className="arrow">&rarr;</span>
+                      <span>{travelPass.data.destination}</span>
+                    </div>
+
+                    <div className="pass-grid">
+                      <div>
+                        <label>Passenger</label>
+                        <div>{travelPass.data.traveler_name}</div>
+                      </div>
+                      <div>
+                        <label>Seats</label>
+                        <div>{travelPass.data.seats} ({travelPass.data.seat_class})</div>
+                      </div>
+                      <div>
+                        <label>Total Fare</label>
+                        <div style={{ fontWeight: 800, color: 'var(--color-primary)' }}>
+                          LKR {travelPass.data.total_fare_lkr.toLocaleString()}
+                        </div>
+                      </div>
+                      <div>
+                        <label>Booking Reference</label>
+                        <div className="rw-mono" style={{ fontWeight: 700, color: 'var(--color-accent)' }}>
+                          {travelPass.data.booking_reference}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="pass-legs-list">
+                      <h5>Transit Segments</h5>
+                      {travelPass.data.legs.map((leg: any, idx: number) => (
+                        <div key={idx} className="pass-leg-row">
+                          <span className="tag">{leg.mode}</span>
+                          <span>
+                            {leg.from || leg.origin} &rarr; {leg.to || leg.destination}
+                          </span>
+                          <span className="rw-mono">{Math.round(leg.duration_min || 0)} min</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="pass-surface__side">
+                    <div
+                      className="qr-embed"
+                      dangerouslySetInnerHTML={{ __html: travelPass.data.qr_code_svg }}
+                    />
+                    <div className="rw-mono" style={{ fontSize: '12px', fontWeight: 800, marginTop: '8px' }}>
+                      {travelPass.data.pass_id}
+                    </div>
+                    <p style={{ fontSize: '11px', color: 'var(--color-text-muted)', marginTop: '6px' }}>
+                      Present barcode at station turnstiles or to bus conductor.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
 
       <footer className="app-footer">

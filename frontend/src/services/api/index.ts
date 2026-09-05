@@ -7,3 +7,12 @@
 export { ApiError, request } from './client';
 export { getHealth } from './health';
 export { planRoute } from './routePlan';
+export {
+  replanRoute,
+  prepareBookingHold,
+  getTravelPass,
+  injectDisruption,
+  restoreDisruption,
+  getDisruptionStatus,
+} from './execution';
+export type { BookingHoldResponse, TravelPassData } from './execution';

@@ -82,9 +82,10 @@ data/gtfs/
 data/**/*.zip
 # NOTE: small curated mock fixtures under data/mock/ may be committed on purpose.
 
-# ---------- Logs ----------
+# ---------- Logs & Temp Backups ----------
 *.log
 logs/
+*.orig_backup
 
 # ---------- OS ----------
 .DS_Store
