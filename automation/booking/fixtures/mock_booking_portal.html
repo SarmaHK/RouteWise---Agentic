@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sri Lanka National Transit e-Ticketing Portal | RouteWise Simulated Partner</title>
+  <style>
+    :root {
+      --primary: #0f4c81;
+      --primary-dark: #092c4c;
+      --accent: #d97706;
+      --success: #16a34a;
+      --warning: #ca8a04;
+      --danger: #dc2626;
+      --bg: #f8fafc;
+      --surface: #ffffff;
+      --text: #1e293b;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background: var(--bg); color: var(--text); line-height: 1.5; padding: 24px; }
+    .container { max-width: 1000px; margin: 0 auto; background: var(--surface); border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.06); overflow: hidden; border: 1px solid var(--border); }
+    header { background: linear-gradient(135deg, var(--primary-dark), var(--primary)); color: white; padding: 28px 32px; }
+    header h1 { font-size: 24px; font-weight: 700; margin-bottom: 6px; }
+    header p { font-size: 14px; opacity: 0.85; }
+    .badge { display: inline-block; padding: 4px 10px; border-radius: 9999px; font-size: 12px; font-weight: 600; text-transform: uppercase; }
+    .badge-sim { background: rgba(255, 255, 255, 0.2); color: #fff; margin-left: 8px; }
+    .badge-success { background: #dcfce7; color: #15803d; }
+    .badge-warning { background: #fef3c7; color: #b45309; }
+    .badge-danger { background: #fee2e2; color: #b91c1c; }
+    
+    .content { padding: 32px; }
+    .search-panel { background: #f1f5f9; padding: 20px; border-radius: 8px; margin-bottom: 28px; border: 1px solid var(--border); }
+    .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 16px; }
+    .field label { display: block; font-size: 13px; font-weight: 600; color: var(--text-muted); margin-bottom: 6px; }
+    .field input, .field select { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px; background: white; }
+    
+    .btn { background: var(--primary); color: white; border: none; padding: 10px 20px; border-radius: 6px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+    .btn:hover { background: var(--primary-dark); }
+    .btn-accent { background: var(--accent); }
+    .btn-accent:hover { background: #b45309; }
+    
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+    th { text-align: left; padding: 12px 14px; background: #f8fafc; color: var(--text-muted); font-size: 13px; font-weight: 600; border-bottom: 2px solid var(--border); }
+    td { padding: 14px; border-bottom: 1px solid var(--border); font-size: 14px; vertical-align: middle; }
+    tr:hover td { background: #f8fafc; }
+    
+    .hold-box { margin-top: 32px; padding: 24px; background: #eff6ff; border-radius: 8px; border: 1px solid #bfdbfe; }
+    .hold-box h3 { color: #1e40af; margin-bottom: 12px; }
+    .safety-notice { font-size: 13px; color: #1e40af; margin-bottom: 16px; }
+    #reservation-result { margin-top: 16px; padding: 16px; border-radius: 6px; display: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div>
+          <h1>Sri Lanka Transit Reservation Portal <span class="badge badge-sim">Simulated Environment</span></h1>
+          <p>Government Railways & National Transport Commission Intercity e-Ticketing</p>
+        </div>
+      </div>
+    </header>
+
+    <div class="content">
+      <section class="search-panel">
+        <form id="portal-search-form" onsubmit="event.preventDefault();">
+          <div class="form-grid">
+            <div class="field">
+              <label for="origin-select">Origin Station</label>
+              <input type="text" id="origin-select" value="Colombo Fort" />
+            </div>
+            <div class="field">
+              <label for="dest-select">Destination Station</label>
+              <input type="text" id="dest-select" value="Ella" />
+            </div>
+            <div class="field">
+              <label for="travel-date">Travel Date</label>
+              <input type="date" id="travel-date" value="2026-09-05" />
+            </div>
+            <div class="field">
+              <label for="class-select">Seating Class</label>
+              <select id="class-select">
+                <option value="all">All Classes</option>
+                <option value="first">1st Class / Observation</option>
+                <option value="second" selected>2nd Class Reserved</option>
+                <option value="express">AC Express Bus</option>
+              </select>
+            </div>
+          </div>
+          <button type="button" class="btn" id="btn-search-services">Check Real-Time Services</button>
+        </form>
+      </section>
+
+      <section>
+        <h2 style="font-size: 18px; margin-bottom: 12px;">Available Transit Departures</h2>
+        <table id="services-table">
+          <thead>
+            <tr>
+              <th>Route ID</th>
+              <th>Service / Operator</th>
+              <th>Departure</th>
+              <th>Arrival</th>
+              <th>Fare (LKR)</th>
+              <th>Seats Available</th>
+              <th>Status</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr id="row-r1" data-route-id="R1">
+              <td><strong>R1</strong></td>
+              <td>Sri Lanka Railways (1005 Podi Menike)</td>
+              <td>05:55 Colombo Fort</td>
+              <td>13:10 Ella</td>
+              <td>LKR 1,400</td>
+              <td><span id="seats-r1">4</span> seats</td>
+              <td><span class="badge badge-warning" id="status-r1">Limited</span></td>
+              <td><button class="btn btn-accent" style="padding: 6px 12px; font-size: 12px;" onclick="selectRoute('R1', '1400')">Select</button></td>
+            </tr>
+            <tr id="row-r2" data-route-id="R2">
+              <td><strong>R2</strong></td>
+              <td>NTC Route 99 AC Express Bus</td>
+              <td>06:30 Colombo Pettah</td>
+              <td>12:30 Ella</td>
+              <td>LKR 1,200</td>
+              <td><span id="seats-r2">18</span> seats</td>
+              <td><span class="badge badge-success" id="status-r2">Available</span></td>
+              <td><button class="btn btn-accent" style="padding: 6px 12px; font-size: 12px;" onclick="selectRoute('R2', '1200')">Select</button></td>
+            </tr>
+            <tr id="row-r3" data-route-id="R3">
+              <td><strong>R3</strong></td>
+              <td>Multi-Modal Mainline Express + Feeder</td>
+              <td>07:00 Colombo Fort</td>
+              <td>14:00 Ella</td>
+              <td>LKR 1,950</td>
+              <td><span id="seats-r3">15</span> seats</td>
+              <td><span class="badge badge-success" id="status-r3">Available</span></td>
+              <td><button class="btn btn-accent" style="padding: 6px 12px; font-size: 12px;" onclick="selectRoute('R3', '1950')">Select</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="hold-box">
+        <h3>Autonomous Booking Hold (Workstream C / Coder Work)</h3>
+        <p class="safety-notice">
+          <strong>Safety Invariant:</strong> This action creates a 15-minute temporary reservation hold. No financial transaction or payment gateway is invoked.
+        </p>
+        <form id="booking-hold-form" onsubmit="event.preventDefault();">
+          <div class="form-grid">
+            <div class="field">
+              <label for="route-id-input">Route Identifier</label>
+              <input type="text" id="route-id-input" placeholder="e.g. R1" value="R1" required />
+            </div>
+            <div class="field">
+              <label for="traveler-name-input">Primary Traveler Name</label>
+              <input type="text" id="traveler-name-input" placeholder="e.g. Samantha Perera" value="Samantha Perera" required />
+            </div>
+            <div class="field">
+              <label for="seats-input">Number of Seats</label>
+              <input type="number" id="seats-input" min="1" max="4" value="1" required />
+            </div>
+            <div class="field">
+              <label for="hold-fare-input">Estimated Fare (LKR)</label>
+              <input type="text" id="hold-fare-input" value="1400" readonly />
+            </div>
+          </div>
+          <button type="button" class="btn" id="btn-hold-reservation" onclick="executeHold()">Hold Reservation (Simulated)</button>
+        </form>
+
+        <div id="reservation-result"></div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    function selectRoute(routeId, fare) {
+      document.getElementById('route-id-input').value = routeId;
+      document.getElementById('hold-fare-input').value = fare;
+    }
+
+    function executeHold() {
+      const routeId = document.getElementById('route-id-input').value.trim().toUpperCase();
+      const traveler = document.getElementById('traveler-name-input').value.trim();
+      const seats = document.getElementById('seats-input').value;
+      const fare = document.getElementById('hold-fare-input').value;
+      const hash = Math.floor(100000 + Math.random() * 900000);
+      const ref = `RW-${routeId}-${hash}`;
+      
+      const resBox = document.getElementById('reservation-result');
+      resBox.style.display = 'block';
+      resBox.style.background = '#dcfce7';
+      resBox.style.border = '1px solid #86efac';
+      resBox.style.color = '#166534';
+      resBox.innerHTML = `
+        <h4 style="font-size: 16px; margin-bottom: 6px;">Reservation Hold Confirmed (Simulated)</h4>
+        <p><strong>Booking Reference:</strong> <code style="font-size: 15px; font-weight: bold;">${ref}</code></p>
+        <p><strong>Traveler:</strong> ${traveler} | <strong>Seats:</strong> ${seats} | <strong>Fare:</strong> LKR ${fare}</p>
+        <p><strong>Status:</strong> <span class="badge badge-success">HELD</span> (Expires in 15 minutes)</p>
+        <p style="font-size: 12px; margin-top: 8px; color: #15803d;">* Simulated hold only. No funds charged. Offline Travel Pass eligible.</p>
+      `;
+    }
+  </script>
+</body>
+</html>
