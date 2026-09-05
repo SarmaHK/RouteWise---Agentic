@@ -46,6 +46,9 @@ class Settings(BaseSettings):
     # --- Database (Workstream B; declared for future, unused in A1) ---
     database_url: str = ""
 
+    # --- Transit Intelligence & ML (Workstream B) ---
+    enable_transit_intelligence: bool = False
+
     @property
     def cors_origins(self) -> list[str]:
         """CORS origins parsed from the comma-separated env value."""
@@ -65,6 +68,7 @@ class Settings(BaseSettings):
             "ai_enabled": self.ai_enabled,
             "max_agent_iterations": self.max_agent_iterations,
             "database_configured": bool(self.database_url.strip()),
+            "transit_intelligence_enabled": self.enable_transit_intelligence,
         }
 
 

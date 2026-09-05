@@ -345,8 +345,8 @@ class SpatialTransitGraph:
                 Leg(
                     id="L1_walk",
                     mode="walk",
-                    from="Hotel / Starting point",
-                    to="Pettah Tuk Stand",
+                    origin="Hotel / Starting point",
+                    destination="Pettah Tuk Stand",
                     departure_time=t0,
                     arrival_time=t1,
                     duration_min=5.0,
@@ -365,8 +365,8 @@ class SpatialTransitGraph:
                 Leg(
                     id="L2_tuk",
                     mode="tuk",
-                    from="Pettah Tuk Stand",
-                    to="Colombo Fort Railway Station",
+                    origin="Pettah Tuk Stand",
+                    destination="Colombo Fort Railway Station",
                     departure_time=t1,
                     arrival_time=t2,
                     duration_min=10.0,
@@ -386,8 +386,8 @@ class SpatialTransitGraph:
                 Leg(
                     id="L3_train",
                     mode="train",
-                    from="Colombo Fort Railway Station",
-                    to="Ella Railway Station",
+                    origin="Colombo Fort Railway Station",
+                    destination="Ella Railway Station",
                     departure_time=t3,
                     arrival_time=t4,
                     duration_min=390.0,
@@ -409,8 +409,8 @@ class SpatialTransitGraph:
                 Leg(
                     id="L1_walk",
                     mode="walk",
-                    from="Starting point",
-                    to="Bastian Mawatha Bus Terminal",
+                    origin="Starting point",
+                    destination="Bastian Mawatha Bus Terminal",
                     departure_time=t0,
                     arrival_time=t1,
                     duration_min=15.0,
@@ -429,8 +429,8 @@ class SpatialTransitGraph:
                 Leg(
                     id="L2_bus",
                     mode="bus",
-                    from="Bastian Mawatha Bus Terminal",
-                    to="Ella Bus Junction",
+                    origin="Bastian Mawatha Bus Terminal",
+                    destination="Ella Bus Junction",
                     departure_time=t2,
                     arrival_time=t3,
                     duration_min=325.0,
@@ -448,8 +448,8 @@ class SpatialTransitGraph:
                 Leg(
                     id="L3_walk_dest",
                     mode="walk",
-                    from="Ella Bus Junction",
-                    to="Ella Town Centre",
+                    origin="Ella Bus Junction",
+                    destination="Ella Town Centre",
                     departure_time=t3,
                     arrival_time=t4,
                     duration_min=10.0,
@@ -471,8 +471,8 @@ class SpatialTransitGraph:
                 Leg(
                     id="L1_tuk",
                     mode="tuk",
-                    from="Starting point",
-                    to="Colombo Fort Station",
+                    origin="Starting point",
+                    destination="Colombo Fort Station",
                     departure_time=t0,
                     arrival_time=t1,
                     duration_min=15.0,
@@ -490,8 +490,8 @@ class SpatialTransitGraph:
                 Leg(
                     id="L2_train",
                     mode="train",
-                    from="Colombo Fort Station",
-                    to="Peradeniya Junction",
+                    origin="Colombo Fort Station",
+                    destination="Peradeniya Junction",
                     departure_time=t2,
                     arrival_time=t3,
                     duration_min=140.0,
@@ -509,8 +509,8 @@ class SpatialTransitGraph:
                 Leg(
                     id="L3_bus",
                     mode="bus",
-                    from="Peradeniya Bus Stop",
-                    to="Ella Junction",
+                    origin="Peradeniya Bus Stop",
+                    destination="Ella Junction",
                     departure_time=t4,
                     arrival_time=t5,
                     duration_min=140.0,
@@ -532,8 +532,8 @@ class SpatialTransitGraph:
             Leg(
                 id="L1_transfer",
                 mode="walk",
-                from=origin_name,
-                to=f"{origin_name} Station",
+                origin=origin_name,
+                destination=f"{origin_name} Station",
                 departure_time=t0,
                 arrival_time=t1,
                 duration_min=10.0,
@@ -547,8 +547,8 @@ class SpatialTransitGraph:
             Leg(
                 id="L2_main",
                 mode="train" if "T" in rid else "bus",
-                from=f"{origin_name} Station",
-                to=f"{destination_name} Station",
+                origin=f"{origin_name} Station",
+                destination=f"{destination_name} Station",
                 departure_time=t1,
                 arrival_time=t2,
                 duration_min=180.0,
@@ -560,3 +560,15 @@ class SpatialTransitGraph:
                 data_source=DataSource.simulated,
             ),
         ]
+
+
+_transit_graph_instance: Optional[SpatialTransitGraph] = None
+
+
+def get_transit_graph() -> SpatialTransitGraph:
+    """Return singleton instance of SpatialTransitGraph."""
+    global _transit_graph_instance
+    if _transit_graph_instance is None:
+        _transit_graph_instance = SpatialTransitGraph()
+    return _transit_graph_instance
+

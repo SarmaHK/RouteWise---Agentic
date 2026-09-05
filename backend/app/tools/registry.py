@@ -119,21 +119,23 @@ class ToolRegistry:
         return self.execute(name, kwargs)
 
 
-def _default_tools() -> list[Tool]:
-    """The A4 tool set: one mock search + honest stubs for the B/C-owned capabilities."""
+def _default_tools(enable_workstream_b: bool = True) -> list[Tool]:
+    """The tool set: Workstream B capabilities enabled when requested, with stubs for C."""
     return [
         MockRouteSearchTool(),
-        FareEstimationTool(),
-        DelayPredictionTool(),
-        RouteDetailsTool(),
+        FareEstimationTool(as_stub=not enable_workstream_b),
+        DelayPredictionTool(as_stub=not enable_workstream_b),
+        RouteDetailsTool(as_stub=not enable_workstream_b),
         AvailabilityTool(),
         BookingTool(),
     ]
 
 
-def build_tools(settings: Settings) -> ToolRegistry:  # noqa: ARG001 — see module docstring
-    """Build the registry. ``settings`` is accepted for factory parity; A4 ignores it."""
-    return ToolRegistry(_default_tools())
+def build_tools(settings: Optional[Settings] = None) -> ToolRegistry:
+    """Build the registry. Reads enable_transit_intelligence from settings when provided."""
+    s = settings or get_settings()
+    enable_b = getattr(s, "enable_transit_intelligence", False)
+    return ToolRegistry(_default_tools(enable_workstream_b=enable_b))
 
 
 @lru_cache
