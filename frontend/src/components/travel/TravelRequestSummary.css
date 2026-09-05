@@ -1,0 +1,52 @@
+/* TravelRequestSummary — DESIGN_SYSTEM §12 (understood request); data is mono (§14). Tokens only. */
+
+.travel-request-summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.travel-request {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.travel-request__row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface-sunken);
+  border: var(--border-width) solid var(--color-border);
+}
+
+.travel-request__label {
+  font-size: var(--text-label);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.travel-request__value {
+  margin: 0 0 0 auto;
+  text-align: right;
+  font-size: var(--text-body-sm);
+  color: var(--color-text-primary);
+}
+
+.travel-request__empty {
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
+.assumptions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}

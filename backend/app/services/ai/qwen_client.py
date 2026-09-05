@@ -14,7 +14,12 @@ from typing import Any
 import httpx
 
 from app.config import Settings
-from app.services.ai.base import AIResponse, AIClient, ConnectivityResult
+from app.services.ai.base import (
+    AIResponse,
+    AIServiceUnavailableError,
+    AIClient,
+    ConnectivityResult,
+)
 
 logger = logging.getLogger("routewise.ai.qwen")
 
@@ -32,7 +37,16 @@ class QwenClient(AIClient):
 
     def complete(self, messages: list[dict[str, str]], **kwargs: Any) -> AIResponse:
         payload: dict[str, Any] = {"model": self._model, "messages": messages, **kwargs}
-        data = self._post_chat(payload)
+        try:
+            data = self._post_chat(payload)
+        except httpx.HTTPError as exc:
+            # A9 (§7/§14): an unreachable/erroring Model Studio is a *distinguishable* failure, not
+            # an opaque 500 — and never a silent fallback that would claim the model answered.
+            # Only the exception CLASS is logged: the request headers carry the API key.
+            logger.warning("Qwen completion failed: %s", exc.__class__.__name__)
+            raise AIServiceUnavailableError(
+                f"Model Studio could not be reached ({exc.__class__.__name__})."
+            ) from exc
         choices = data.get("choices") or [{}]
         message = choices[0].get("message") or {}
         return AIResponse(

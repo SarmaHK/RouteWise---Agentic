@@ -1,0 +1,9 @@
+/* RouteTimeline — DESIGN_SYSTEM §11.6/§12.10. Tokens only (§15). */
+
+.route-timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}

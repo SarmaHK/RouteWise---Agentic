@@ -1,0 +1,16 @@
+/* ReasoningSummary — DESIGN_SYSTEM §12.9. Tokens only. */
+
+.decision-reasoning {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background-color: var(--timeline-trace-bg);
+  border: var(--border-width) solid var(--color-border);
+  font-size: var(--text-body-sm);
+  color: var(--color-text-secondary);
+  line-height: var(--leading-normal);
+}
+
+.decision-reasoning__label {
+  font-weight: var(--font-semibold);
+  color: var(--color-text-primary);
+}

@@ -17,8 +17,20 @@ State discipline (AGENT_SPEC §5 — "do not invent new ones"):
   and then acts (A5 brief §9's illustrative ``SEARCHING → EXECUTING → SEARCHING`` flow), so those
   transitions — plus ``EXECUTING → EVALUATING`` — are permitted below. The golden single-search
   path still visits exactly ``UNDERSTANDING → PLANNING → SEARCHING → EVALUATING → COMPLETED``.
+* **A7** adds no state and no transition (A7 brief §20). Its three new capabilities are
+  *information-gathering* tools, so — like ``search_routes`` — they are recorded in ``SEARCHING``:
+  the golden multi-step path repeats ``SEARCHING`` once per tool call and still visits exactly
+  ``UNDERSTANDING → PLANNING → SEARCHING → EVALUATING → COMPLETED``. ``EXECUTING`` remains reserved
+  for capabilities that act on the world (Workstream C's ``prepare_booking``).
 * Invalid transitions raise :class:`InvalidTransitionError` rather than being silently applied
   (A3 brief §4: "invalid transitions prevented/handled explicitly").
+* **A9** adds no state and no transition (brief §4: "do NOT invent unnecessary new states"). It
+  only makes one execution *identifiable and measurable*: the context gains a lightweight
+  ``request_id`` plus run counters (``iteration_count`` / ``tool_call_count`` / ``duration_ms``) so
+  logs and actions can be correlated and bounded work can be reported (brief §10/§11). Those fields
+  are **internal** — they are not part of the frozen ``PlanResponse`` shape except for ``request_id``,
+  which the endpoint copies out for correlation. Every field is additive and defaulted, so an
+  A3–A8 caller that constructs a context unchanged still works.
 """
 
 from __future__ import annotations
@@ -28,6 +40,7 @@ from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.logging_config import new_request_id
 from app.schemas.candidate import RouteCandidate
 from app.schemas.route import (
     AgentAction,
@@ -149,7 +162,11 @@ class AgentExecutionContext(BaseModel):
     )
     legs: list[Leg] = Field(
         default_factory=list,
-        description="Leg-by-leg detail; empty in A3 (get_route_details is a future B tool).",
+        description=(
+            "Leg-by-leg detail for the recommended route; populated in A7 from the mock "
+            "get_route_details tool result, and empty when that capability was not called or "
+            "returned nothing (never invented)."
+        ),
     )
 
     # --- Trace, honesty, errors, timestamps ---
@@ -168,6 +185,28 @@ class AgentExecutionContext(BaseModel):
     )
     created_at: datetime = Field(default_factory=_now)
     updated_at: datetime = Field(default_factory=_now)
+
+    # --- A9: correlation + run metadata (brief §10/§11) ---
+    request_id: str = Field(
+        default_factory=new_request_id,
+        description=(
+            "Lightweight identifier of this one execution, so logs and actions correlate. It "
+            "identifies a request, never a user, and is not persisted."
+        ),
+    )
+    iteration_count: int = Field(
+        default=0, description="Planner turns consumed by the bounded tool loop (A9 §11)."
+    )
+    tool_call_count: int = Field(
+        default=0,
+        description=(
+            "Tool calls actually executed in this run. A suppressed duplicate is not counted: it "
+            "never reached the tool layer (A9 §11)."
+        ),
+    )
+    duration_ms: Optional[float] = Field(
+        default=None, description="Total execution time for this run, set when it finishes (A9 §11)."
+    )
 
     # ------------------------------------------------------------------ #
     # State machine
@@ -200,8 +239,15 @@ class AgentExecutionContext(BaseModel):
         tool_call: Optional[ToolCall] = None,
         status: str = "done",
         data_source: Optional[DataSource] = None,
+        kind: Optional[str] = None,
     ) -> AgentAction:
-        """Append an :class:`AgentAction` to the trace with the next sequence number."""
+        """Append an :class:`AgentAction` to the trace with the next sequence number.
+
+        ``seq`` is assigned from the current trace length and ``timestamp`` from the clock, so the
+        ordering is deterministic for a given sequence of calls and never depends on a dict/set
+        iteration order (A9 brief §5). ``kind`` (A9, additive) names the action type from
+        :data:`~app.schemas.route.ACTION_KINDS`.
+        """
         action = AgentAction(
             seq=len(self.actions) + 1,
             state=state,
@@ -211,6 +257,7 @@ class AgentExecutionContext(BaseModel):
             status=status,
             timestamp=_now(),
             data_source=data_source,
+            kind=kind,
         )
         self.actions.append(action)
         self.updated_at = action.timestamp

@@ -1,4 +1,4 @@
-"""Qwen tool-calling adapter + agent planner (Workstream A, Phase A5).
+"""Qwen tool-calling adapter + agent planner (Workstream A; A5 loop, A7 mock intelligence).
 
 Connects the model to the A4 tool system so the agent can autonomously perform **multiple** tool
 calls (A5 brief §2/§5). Like :mod:`app.services.ai.extraction` (A2), this module **extends** the
@@ -10,9 +10,16 @@ implementations:
   ``MODEL_STUDIO_API_KEY`` is configured). It sends the conversation plus **available** tool
   definitions and normalizes the model's ``tool_calls`` (or final content) into an
   :class:`AgentDecision`. It never executes anything itself — it only *decides the next step*.
+  Since A7 it is automatically offered the three new mock intelligence capabilities, because the
+  definitions are derived from ``registry.list_available()`` — never a hard-coded tool list
+  (A7 brief §12).
 * :class:`MockAgentPlanner` — a deterministic, offline simulation of multi-step tool selection
   (A5 brief §13) so the whole flow is testable with no credentials. It is clearly labelled
-  ``data_source="mock"`` / ``model="mock-qwen"`` and never claims a real model decided.
+  ``data_source="mock"`` / ``model="mock-qwen"`` and never claims a real model decided. **A7**
+  extends it into an *evidence-driven* multi-step scenario — search, then fare, then delay, then
+  leg detail, then decide — where every step is chosen from what the previous tools actually
+  returned (A7 brief §14). That scenario belongs to the **mock only**: the orchestrator hard-codes
+  no tool sequence, and the real agent stays model-driven (A7 brief §13).
 
 Responsibilities kept deliberately small and safe:
 
@@ -53,8 +60,22 @@ logger = logging.getLogger("routewise.ai.agent")
 #: The deterministic mock planner's model id — never presented as a real Qwen model (A5 §13).
 _MOCK_MODEL = "mock-qwen"
 
-#: The one capability the golden flow needs; the mock planner requests it first (A5 §13/§22).
+#: The capability that yields candidate routes; the mock planner asks for it first (A5 §13/§22).
 _SEARCH_TOOL = "search_routes"
+
+#: A7: the route-scoped intelligence capabilities the **mock** planner may ask for once candidates
+#: are known, in the order it prefers them, with the wording used in its user-visible message. This
+#: is a property of the deterministic mock scenario only (A7 brief §14) — it is *not* a workflow:
+#: the orchestrator never reads it, and the real Qwen planner picks its own order (A7 brief §13).
+_INTEL_LABELS: dict[str, str] = {
+    "get_fare_estimate": "fare estimates",
+    "get_delay_prediction": "delay predictions",
+    "get_route_details": "leg-by-leg route details",
+}
+
+#: How many of the observed routes the mock planner investigates per capability. Bounds the offline
+#: demo trace (3 calls per stage) without hiding any candidate of the golden corridor.
+_DEFAULT_MAX_ROUTES_PER_TOOL = 3
 
 AgentDecisionKind = Literal["tool_call", "final"]
 
@@ -124,6 +145,12 @@ class PlannerContext:
     ``messages``/``tools`` drive the real Qwen call; ``travel_request``/``tool_names``/
     ``steps_taken`` let the deterministic mock simulate multi-step selection without parsing the
     transcript (A5 brief §13).
+
+    **A7** adds two additive, defaulted fields so a planner can reason over *evidence* rather than a
+    script (A7 brief §14/§17): ``called_tools`` — the capability names already executed in this run
+    (so nothing is asked twice), and ``route_ids`` — the candidate ids the tools actually returned
+    (so route-scoped intelligence is only requested for routes that exist). Both are populated by
+    the orchestrator from real :class:`~app.tools.base.ToolResult` data, never guessed.
     """
 
     messages: list[dict[str, Any]]
@@ -131,10 +158,25 @@ class PlannerContext:
     travel_request: dict[str, Any]
     tool_names: list[str]
     steps_taken: int = 0
+    called_tools: list[str] = field(default_factory=list)
+    route_ids: list[str] = field(default_factory=list)
 
 
 class AgentPlanner(ABC):
-    """One interface for "given the context, what should the agent do next?"."""
+    """One interface for "given the context, what should the agent do next?".
+
+    **A9 (provenance honesty, brief §14):** each implementation also declares *what* is doing the
+    planning, before any decision exists. The orchestrator uses these two attributes for the
+    ``PLANNING`` action's ``data_source`` and for the ``agent.start`` log line, so a run planned by
+    the deterministic mock is never labelled ``live`` and a run planned by real Qwen is never
+    labelled ``mock``. They describe the **planner only** — route facts stay ``mock`` until
+    Workstream B supplies real data, whichever planner is active.
+    """
+
+    #: Identifier of the model/strategy doing the planning (never a secret, never a credential).
+    model: str = "unknown"
+    #: Honesty flag for the planning step itself.
+    data_source: Literal["live", "mock"] = "mock"
 
     @abstractmethod
     def next_decision(self, ctx: PlannerContext) -> AgentDecision:
@@ -320,8 +362,14 @@ def _parse_tool_calls(message: dict[str, Any]) -> list[ToolCallRequest]:
 class QwenAgentPlanner(AgentPlanner):
     """Decides the next step using the EXISTING Qwen ``AIClient`` (no second client — A5 §5)."""
 
-    def __init__(self, client: AIClient) -> None:
+    #: A9 §14: this planner really does call the configured model, so it is labelled ``live``.
+    data_source: Literal["live", "mock"] = "live"
+
+    def __init__(self, client: AIClient, model: str = "qwen") -> None:
         self._client = client
+        # The configured model id, used for provenance *before* the first response arrives; each
+        # AgentDecision still carries the model the response actually reported.
+        self.model = model
 
     def next_decision(self, ctx: PlannerContext) -> AgentDecision:
         kwargs: dict[str, Any] = {"temperature": 0}
@@ -360,34 +408,90 @@ class QwenAgentPlanner(AgentPlanner):
 class MockAgentPlanner(AgentPlanner):
     """Deterministic multi-step planner used when no ``MODEL_STUDIO_API_KEY`` is set.
 
-    Simulates the canonical flow (A5 brief §13/§22): *gather route candidates first, then decide*.
-    It requests ``search_routes`` once when it is a registered capability and nothing has been
-    gathered yet, then produces a final decision — so it never loops and never fabricates. The
-    agent loop still validates/executes the call through the registry+executor, so a disabled or
-    failing ``search_routes`` degrades honestly exactly as it would for a real model.
+    A5 made this planner ask for ``search_routes`` once and then decide. **A7** turns it into an
+    *evidence-driven* multi-step scenario (A7 brief §14) that exercises the whole mock intelligence
+    seam offline. Each turn it looks only at what has actually been observed and asks for the next
+    thing it is missing:
+
+    1. no candidate ids observed yet and nothing executed → ask for ``search_routes``;
+    2. candidate ids observed → ask for the first route-scoped capability that is registered and
+       not yet called (fare, then delay, then leg detail), once per observed route id;
+    3. nothing left that could add information → finish.
+
+    So the golden offline trace is search → fare → delay → details → decision, but that order is a
+    *consequence* of the evidence, not a script: a registry without ``search_routes`` (or one whose
+    search returns nothing) skips straight to the finish, a registry without the fare tool skips
+    fare, and a capability that already ran is never repeated. The **real** agent hard-codes none of
+    this — the orchestrator executes whatever the planner returns, and real Qwen chooses its own
+    order (A7 brief §13). Every decision is labelled ``data_source="mock"`` /
+    ``model="mock-qwen"`` and never claims a real model decided.
     """
 
+    def __init__(self, max_routes_per_tool: int = _DEFAULT_MAX_ROUTES_PER_TOOL) -> None:
+        #: Upper bound on route-scoped calls per capability (keeps the offline trace readable).
+        self._max_routes_per_tool = max(1, max_routes_per_tool)
+
+    #: A9 §14: the deterministic offline planner is labelled ``mock``/``mock-qwen`` everywhere, so
+    #: it can never be mistaken for a real model run.
+    model = _MOCK_MODEL
+    data_source: Literal["live", "mock"] = "mock"
+
     def next_decision(self, ctx: PlannerContext) -> AgentDecision:
-        if ctx.steps_taken == 0 and _SEARCH_TOOL in ctx.tool_names:
+        # 1. Without candidate ids there is nothing route-scoped to ask about, so the only useful
+        #    step is the corridor search — once, and only if that capability is registered.
+        if not ctx.route_ids:
+            if (
+                ctx.steps_taken == 0
+                and _SEARCH_TOOL in ctx.tool_names
+                and _SEARCH_TOOL not in ctx.called_tools
+            ):
+                return AgentDecision(
+                    kind="tool_call",
+                    tool_calls=[
+                        ToolCallRequest(
+                            name=_SEARCH_TOOL,
+                            arguments={
+                                "origin": ctx.travel_request.get("origin"),
+                                "destination": ctx.travel_request.get("destination"),
+                            },
+                        )
+                    ],
+                    content="I need candidate routes for this corridor before I can decide.",
+                    data_source="mock",
+                    model=_MOCK_MODEL,
+                )
+            return self._final(ctx)
+
+        # 2. Candidates are known: gather the intelligence still missing for those exact route ids.
+        for name, label in _INTEL_LABELS.items():
+            if name not in ctx.tool_names or name in ctx.called_tools:
+                continue
+            route_ids = ctx.route_ids[: self._max_routes_per_tool]
             return AgentDecision(
                 kind="tool_call",
                 tool_calls=[
-                    ToolCallRequest(
-                        name=_SEARCH_TOOL,
-                        arguments={
-                            "origin": ctx.travel_request.get("origin"),
-                            "destination": ctx.travel_request.get("destination"),
-                        },
-                    )
+                    ToolCallRequest(name=name, arguments={"route_id": route_id})
+                    for route_id in route_ids
                 ],
-                content="I need candidate routes for this corridor before I can decide.",
+                content=(
+                    f"Candidates {', '.join(route_ids)} are known; I still need {label} "
+                    "for them before I can compare the routes."
+                ),
                 data_source="mock",
                 model=_MOCK_MODEL,
             )
+
+        # 3. Every registered capability that could add information has been used.
+        return self._final(ctx)
+
+    @staticmethod
+    def _final(ctx: PlannerContext) -> AgentDecision:
+        """Finish honestly, naming what was actually gathered (never claiming more)."""
+        gathered = ", ".join(dict.fromkeys(ctx.called_tools)) or "no tool results"
         return AgentDecision(
             kind="final",
             tool_calls=[],
-            content="I have enough information to decide from the gathered tool results.",
+            content=f"I have enough information to decide from the gathered tool results ({gathered}).",
             data_source="mock",
             model=_MOCK_MODEL,
         )
@@ -401,7 +505,7 @@ class MockAgentPlanner(AgentPlanner):
 def build_planner(settings: Settings) -> AgentPlanner:
     """Return a Qwen-backed planner when a key exists, else the deterministic mock."""
     if settings.ai_enabled:
-        return QwenAgentPlanner(build_ai_client(settings))
+        return QwenAgentPlanner(build_ai_client(settings), model=settings.model_name)
     return MockAgentPlanner()
 
 

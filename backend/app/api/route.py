@@ -18,23 +18,39 @@ candidate provider and every result is labelled ``data_source="mock"``. Extracti
 selection use real Qwen when ``MODEL_STUDIO_API_KEY`` is set, else the deterministic mocks (A2/A5).
 If the request needs clarification, the agent **stops before deciding** and returns status
 ``UNDERSTANDING`` (A2 behaviour preserved). Malformed model output is rejected safely as a 502.
+
+**A9** adds no endpoint and changes no field meaning (brief §16); it makes the request *correlatable*
+and the failure modes *distinguishable*:
+
+* every call mints a lightweight ``request_id``, echoes it in the ``X-Request-Id`` response header
+  and the (additive, optional) ``request_id`` response field, and passes it to the agent so the
+  logs, the actions and the body all refer to one execution (brief §10);
+* structured ``event=…`` logs mark the request received, extraction failure and the response sent —
+  never the raw text, never a credential (brief §9);
+* an unreachable live AI service is now a retryable **503** (the slot API_CONTRACTS §5 already
+  reserved), distinct from a malformed model answer (502) and an internal bug (500) (brief §7).
 """
 
 from __future__ import annotations
 
+import logging
+import time
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import HTMLResponse
-from pydantic import BaseModel, Field
 
 from app.agent.orchestrator import RouteAgent, get_agent
+from app.logging_config import REQUEST_ID_HEADER, format_event, new_request_id
 from app.schemas.route import PlanRequest, PlanResponse
+from app.services.ai.base import AIServiceUnavailableError
 from app.services.ai.extraction import (
     MalformedExtractionError,
     TravelRequestExtractor,
     get_extractor,
 )
+
+logger = logging.getLogger("routewise.api")
 
 router = APIRouter(tags=["route"])
 
@@ -46,6 +62,7 @@ router = APIRouter(tags=["route"])
 )
 def plan_route(
     request: PlanRequest,
+    response: Response,
     extractor: TravelRequestExtractor = Depends(get_extractor),
     agent: RouteAgent = Depends(get_agent),
     settings: Optional[Any] = None,
@@ -54,8 +71,20 @@ def plan_route(
 
     Missing hard constraints are surfaced honestly through the TravelRequest clarification fields,
     and the agent stops before deciding rather than fabricating a route (A3 brief §6/§12). All
-    route data is mock and labelled as such; no live transit/booking data is claimed.
+    route data is mock and labelled as such; no live transit/booking data is claimed. A9 adds the
+    per-request identifier and the 503 mapping; nothing else about the behaviour changes.
     """
+    started = time.perf_counter()
+    request_id = new_request_id()
+    response.headers[REQUEST_ID_HEADER] = request_id
+    logger.info(
+        format_event(
+            "request.received",
+            request_id=request_id,
+            mode="text" if request.raw_text else "structured",
+        )
+    )
+
     hints = request.model_dump(exclude={"raw_text"}, exclude_none=True)
     raw_text = request.raw_text or ""
 
@@ -63,14 +92,37 @@ def plan_route(
         travel_request = extractor.extract(raw_text, hints)
     except MalformedExtractionError as exc:
         # Model output was malformed/invalid — reject safely, don't fabricate a request.
+        logger.warning(
+            format_event("extraction.failed", request_id=request_id, reason="malformed_output")
+        )
         raise HTTPException(
             status_code=502,
             detail="Travel-request extraction failed: the model returned invalid output.",
         ) from exc
+    except AIServiceUnavailableError as exc:
+        # A9 (§7/§14): the configured live service was unreachable. Retryable (503), distinct from
+        # a malformed answer (502); the error message never claims the model succeeded.
+        logger.warning(
+            format_event("extraction.failed", request_id=request_id, reason="service_unavailable")
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="The AI extraction service could not be reached; please retry shortly.",
+        ) from exc
 
-    # The agent owns the state machine, tool calls, decision, and action trace (A3 brief §12).
-    context = agent.run(travel_request)
+    try:
+        # The agent owns the state machine, tool calls, decision, and action trace (A3 brief §12).
+        context = agent.run(travel_request, request_id=request_id)
+    except AIServiceUnavailableError as exc:
+        logger.warning(
+            format_event("planning.failed", request_id=request_id, reason="service_unavailable")
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="The AI planning service could not be reached; please retry shortly.",
+        ) from exc
 
+    # Workstream B: populate legs from transit intelligence when the recommendation has none.
     legs = context.legs
     if not legs and context.recommendation is not None:
         from app.config import get_settings
@@ -83,6 +135,16 @@ def plan_route(
                 legs = details_res.data.get("legs", [])
                 context.legs = legs
 
+    logger.info(
+        format_event(
+            "plan.responded",
+            request_id=request_id,
+            status=context.state,
+            recommendation=(context.recommendation.id if context.recommendation else None),
+            actions=len(context.actions),
+            duration_ms=round((time.perf_counter() - started) * 1000, 2),
+        )
+    )
     return PlanResponse(
         status=context.state,
         request=context.request,
@@ -91,6 +153,7 @@ def plan_route(
         alternatives=context.alternatives,
         agent_actions=context.actions,
         reasoning=context.reasoning,
+        request_id=request_id,
     )
 
 

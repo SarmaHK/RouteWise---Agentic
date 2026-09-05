@@ -37,7 +37,7 @@ async def lifespan(app: FastAPI):
     """Configure logging on startup; log a NON-secret view only (never the API key)."""
     settings = get_settings()
     configure_logging(settings.log_level)
-    logger.info("RouteWise backend starting (phase A3): %s", settings.public_view())
+    logger.info("RouteWise backend starting (phase A9): %s", settings.public_view())
     yield
     logger.info("RouteWise backend shutting down.")
 
@@ -50,9 +50,10 @@ def create_app() -> FastAPI:
         version=__version__,
         description=(
             "Autonomous Multi-Modal Travel & Transit Coordinator for Tourism in Sri Lanka. "
-            "Phase A3: health probe + POST /api/route/plan agent orchestration and a "
-            "deterministic route decision over mock candidates. Real transit data, execution, "
-            "and live monitoring arrive in A4-A9."
+            "Phase A9: health probe + POST /api/route/plan — a bounded, model-driven "
+            "agent tool loop, a deterministic decision over mock candidates, and structured "
+            "observability with per-request correlation. Real transit data arrives with "
+            "Workstream B; booking with Workstream C."
         ),
         lifespan=lifespan,
     )
@@ -74,7 +75,7 @@ def create_app() -> FastAPI:
     def root() -> dict[str, str]:
         return {
             "service": "routewise-agentic-backend",
-            "phase": "A3-decision",
+            "phase": "A9-stabilization",
             "health": "/health",
             "docs": "/docs",
         }

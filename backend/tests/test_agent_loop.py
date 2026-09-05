@@ -112,32 +112,40 @@ def test_single_tool_then_final_decision() -> None:
 
 
 # 10. Tool → tool → final: a model-selected sequence, with an honest NOT_IMPLEMENTED in the middle.
+# A7 (brief §11): get_fare_estimate is an AVAILABLE mock tool now, so the honest mid-sequence
+# failure is demonstrated with a capability Workstream C still owns. The loop shape is unchanged.
 def test_multiple_tool_calls_then_final() -> None:
     agent = _agent(
         _ScriptedPlanner(
-            [_tool_call("search_routes", _SEARCH), _tool_call("get_fare_estimate", {"route_id": "R1"}), _FINAL]
+            [_tool_call("search_routes", _SEARCH), _tool_call("check_availability", {"route_id": "R1"}), _FINAL]
         )
     )
     context = agent.run(_golden_request())
     calls = _tool_actions(context)
-    assert [a.tool_call.name for a in calls] == ["search_routes", "get_fare_estimate"]
+    assert [a.tool_call.name for a in calls] == ["search_routes", "check_availability"]
     assert calls[0].status == "done"
-    assert calls[1].status == "error"  # the fare stub is not built — never faked (§14)
+    assert calls[1].status == "error"  # the availability stub is not built — never faked (§14)
     assert calls[1].tool_call.error_code == "NOT_IMPLEMENTED"
     assert context.recommendation is not None  # still decides from the search candidates
     assert context.state is AgentState.COMPLETED
 
 
 # 11. A tool failure is fed back and the agent recovers to a grounded decision.
+# A7 (brief §18): the representative data-tool failure is now an unknown route id — the mock
+# intelligence refuses to invent R999, and the agent still decides from what it did gather.
 def test_recovers_after_a_tool_failure() -> None:
     agent = _agent(
         _ScriptedPlanner(
-            [_tool_call("get_delay_prediction", {"route_id": "R1"}), _tool_call("search_routes", _SEARCH), _FINAL]
+            [_tool_call("get_delay_prediction", {"route_id": "R999"}), _tool_call("search_routes", _SEARCH), _FINAL]
         )
     )
     context = agent.run(_golden_request())
+    calls = _tool_actions(context)
+    assert calls[0].status == "error"
+    assert calls[0].tool_call.error_code == "ROUTE_NOT_FOUND"
     assert context.errors  # the failure was recorded honestly, not hidden
     assert context.recommendation is not None  # ...and the agent recovered
+    assert context.recommendation.id == "R1"
     assert context.state is AgentState.COMPLETED
 
 
@@ -292,4 +300,17 @@ def test_custom_registry_without_search_finalizes_cleanly() -> None:
     context = agent.run(_golden_request())
     assert context.state is AgentState.COMPLETED
     assert context.recommendation is None
-    assert _tool_actions(context)[0].tool_call.error_code == "NOT_IMPLEMENTED"
+    # A7: get_fare_estimate is AVAILABLE now, so a call with no route_id fails the executor's
+    # validation gate honestly — not NOT_IMPLEMENTED, and never invented data (§19).
+    assert _tool_actions(context)[0].tool_call.error_code == "INVALID_INPUT"
+
+    # Even a *successful* fare call cannot yield a recommendation without search_routes: the
+    # decision engine only ever sees candidates, so nothing is fabricated (§21).
+    ok = RouteAgent(
+        tools=ToolRegistry([FareEstimationTool()]),
+        engine=DecisionEngine(),
+        planner=_ScriptedPlanner([_tool_call("get_fare_estimate", {"route_id": "R1"}), _FINAL]),
+    ).run(_golden_request())
+    assert ok.state is AgentState.COMPLETED
+    assert ok.recommendation is None
+    assert _tool_actions(ok)[0].status == "done"

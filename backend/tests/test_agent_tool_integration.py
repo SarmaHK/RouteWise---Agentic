@@ -56,11 +56,17 @@ class _RaisingSearchTool(Tool):
         raise RuntimeError("exploded")
 
 
-# 1. The agent can resolve the one available capability through the registry.
+# 1. The agent can resolve the available capabilities through the registry.
+# A7 (brief §11): four mock data tools are AVAILABLE now, all resolved through the same registry.
 def test_agent_resolves_available_tool() -> None:
     registry = build_tools(get_settings())
     assert registry.status("search_routes") is ToolAvailability.available
-    assert registry.list_available() == ["search_routes"]
+    assert registry.list_available() == [
+        "search_routes",
+        "get_fare_estimate",
+        "get_delay_prediction",
+        "get_route_details",
+    ]
     assert registry.get("search_routes") is not None
 
 

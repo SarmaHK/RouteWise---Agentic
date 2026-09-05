@@ -1,0 +1,67 @@
+/* StatusIndicator — DESIGN_SYSTEM §11.5. Dot color from --state-* / semantic tokens. */
+
+.status-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-body-sm);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.status-indicator__dot {
+  width: var(--status-dot-size);
+  height: var(--status-dot-size);
+  border-radius: var(--radius-full);
+  background-color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.status-indicator__label {
+  color: inherit;
+}
+
+/* ---------- Connection states ---------- */
+.status-indicator[data-state='online'] .status-indicator__dot {
+  background-color: var(--color-success);
+}
+.status-indicator[data-state='checking'] .status-indicator__dot {
+  background-color: var(--color-info);
+}
+.status-indicator[data-state='offline'] .status-indicator__dot {
+  background-color: var(--color-error);
+}
+
+/* ---------- Canonical agent states (§11.5; never invent a state — AGENT_SPEC §5) ---------- */
+.status-indicator[data-state='idle'] .status-indicator__dot {
+  background-color: var(--state-idle);
+}
+.status-indicator[data-state='understanding'] .status-indicator__dot {
+  background-color: var(--state-understanding);
+}
+.status-indicator[data-state='planning'] .status-indicator__dot {
+  background-color: var(--state-planning);
+}
+.status-indicator[data-state='searching'] .status-indicator__dot {
+  background-color: var(--state-searching);
+}
+.status-indicator[data-state='evaluating'] .status-indicator__dot {
+  background-color: var(--state-evaluating);
+}
+.status-indicator[data-state='executing'] .status-indicator__dot {
+  background-color: var(--state-executing);
+}
+.status-indicator[data-state='replanning'] .status-indicator__dot {
+  background-color: var(--state-replanning);
+}
+.status-indicator[data-state='completed'] .status-indicator__dot {
+  background-color: var(--state-completed);
+}
+.status-indicator[data-state='error'] .status-indicator__dot {
+  background-color: var(--state-error);
+}
+
+/* Live/active pulse — the single allowed attention animation (§7.3); reduced-motion aware. */
+.status-indicator[data-pulse='true'] .status-indicator__dot {
+  animation: rw-pulse var(--duration-slower) var(--ease-standard) infinite;
+}

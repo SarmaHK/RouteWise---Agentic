@@ -120,13 +120,34 @@ class ToolCall(BaseModel):
         description=(
             "Structured failure code when the call did not succeed (A5, additive): e.g. "
             "INVALID_INPUT | UNKNOWN_TOOL | NOT_IMPLEMENTED | TOOL_UNAVAILABLE | "
-            "EXECUTION_ERROR | TIMEOUT | MALFORMED_RESULT."
+            "EXECUTION_ERROR | TIMEOUT | MALFORMED_RESULT | ROUTE_NOT_FOUND (A7)."
         ),
     )
 
 
+#: The closed vocabulary for :attr:`AgentAction.kind` (A9 brief §5). A consumer may branch on these
+#: instead of parsing a human ``label``; anything outside this set is a bug, not a new feature.
+ACTION_KINDS: frozenset[str] = frozenset(
+    {
+        "understanding",  # the request was parsed into a TravelRequest
+        "clarification",  # a hard constraint is missing; the agent stopped before deciding
+        "planning",  # the approach was planned (which tools may be used, and how)
+        "tool_call",  # one tool was executed, or a repeat was suppressed
+        "evaluation",  # the deterministic engine compared the candidates
+        "completion",  # terminal step: the outcome of this execution
+    }
+)
+
+
 class AgentAction(BaseModel):
-    """One entry of the ordered agent-activity log (API_CONTRACTS §4)."""
+    """One entry of the ordered agent-activity log (API_CONTRACTS §4).
+
+    **A9 (additive, brief §5):** ``kind`` names *what sort of observable step* this is, drawn from
+    :data:`ACTION_KINDS`, so a consumer can branch on the action type instead of parsing the human
+    ``label`` or special-casing each phase. It is optional and defaulted, so the A3–A8 shape is
+    unchanged and an older response without it still parses. It carries no hidden reasoning — it is
+    the same information the label conveys, made machine-readable.
+    """
 
     seq: int
     state: AgentState
@@ -136,10 +157,23 @@ class AgentAction(BaseModel):
     status: str = "done"  # pending | active | done | error
     timestamp: Optional[datetime] = None
     data_source: Optional[DataSource] = None
+    kind: Optional[str] = Field(
+        default=None,
+        description=(
+            "A9 (additive): the action type — one of understanding | clarification | planning | "
+            "tool_call | evaluation | completion. Absent on pre-A9 responses."
+        ),
+    )
 
 
 class Leg(BaseModel):
-    """A single leg of a route (API_CONTRACTS §3). Foundation shape; populated from A6+."""
+    """A single leg of a route (API_CONTRACTS §3).
+
+    Foundation shape since A3; **A7 populates it** — ``PlanResponse.legs`` now carries the leg-by-leg
+    detail of the *recommended* route, taken verbatim from the mock ``get_route_details`` tool
+    result (A7 brief §9). The shape is unchanged, so Workstream B can later supply real legs with no
+    contract change.
+    """
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -234,6 +268,16 @@ class PlanResponse(BaseModel):
     A3 adds one additive field, ``reasoning`` (API_CONTRACTS §9 permits additive changes): the
     concise, observable explanation of the decision (the ReasoningSummary shown at COMPLETED,
     DESIGN_SYSTEM §12.9). It never exposes hidden chain-of-thought — only structured factors.
+
+    **A7 changes no field**: ``legs`` (declared since A3) is now populated with the recommended
+    route's leg detail from the mock ``get_route_details`` result, and ``agent_actions`` may contain
+    several tool calls (search + fare + delay + details) in a planner-selected order — all still
+    ``data_source=mock`` (A7 brief §20/§22).
+
+    **A9 adds one additive, optional field** (brief §10/§16): ``request_id``, the lightweight
+    identifier of this one agent execution. It exists so a result shown in the UI can be correlated
+    with the backend logs for that exact run — it identifies *a request*, never a user, and carries
+    no personal information. Every pre-existing field is unchanged, so no consumer breaks.
     """
 
     status: AgentState
@@ -247,4 +291,10 @@ class PlanResponse(BaseModel):
     reasoning: Optional[str] = Field(
         default=None,
         description="Concise explanation of the decision / clarification (A3, additive).",
+    )
+    request_id: Optional[str] = Field(
+        default=None,
+        description=(
+            "A9 (additive): correlates this response with the backend logs for the same execution."
+        ),
     )

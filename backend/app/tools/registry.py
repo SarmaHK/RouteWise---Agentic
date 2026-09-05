@@ -30,6 +30,7 @@ from app.tools.base import (
     ToolResult,
     ToolStatus,
 )
+from app.tools.candidates import MockCandidateProvider
 from app.tools.capabilities import (
     AvailabilityTool,
     BookingTool,
@@ -39,6 +40,7 @@ from app.tools.capabilities import (
     RouteDetailsTool,
 )
 from app.tools.executor import ToolExecutor
+from app.tools.intelligence import MockRouteIntelligence
 
 
 class DuplicateToolError(ValueError):
@@ -120,14 +122,22 @@ class ToolRegistry:
 
 
 def _default_tools(
-    enable_workstream_b: bool = True, enable_workstream_c: bool = False
+    enable_workstream_b: bool = False,
+    enable_workstream_c: bool = False,
 ) -> list[Tool]:
-    """The tool set: Workstream B and C capabilities enabled when requested."""
+    """The tool set: shared MockRouteIntelligence (A7) + config-driven B/C capabilities.
+
+    A shared :class:`~app.tools.intelligence.MockRouteIntelligence` instance backs all four
+    data tools so they stay consistent (A7 brief §15). When ``enable_workstream_b`` is True,
+    the fare/delay/details tools use real ML predictors. Workstream C tools are toggled via
+    ``enable_workstream_c``.
+    """
+    intelligence = MockRouteIntelligence()
     return [
-        MockRouteSearchTool(),
-        FareEstimationTool(as_stub=not enable_workstream_b),
-        DelayPredictionTool(as_stub=not enable_workstream_b),
-        RouteDetailsTool(as_stub=not enable_workstream_b),
+        MockRouteSearchTool(provider=MockCandidateProvider(intelligence)),
+        FareEstimationTool(provider=intelligence, use_real=enable_workstream_b),
+        DelayPredictionTool(provider=intelligence, use_real=enable_workstream_b),
+        RouteDetailsTool(provider=intelligence, use_real=enable_workstream_b),
         AvailabilityTool(as_stub=not enable_workstream_c),
         BookingTool(as_stub=not enable_workstream_c),
     ]

@@ -256,6 +256,26 @@ hr {
   padding-inline: var(--container-padding);
 }
 
+/* Small muted meta text — a shared utility (footer, card mock notes, field hints).
+   Component-specific styling lives with the components; this is a cross-cutting utility
+   like .rw-mono, so it belongs here (DESIGN_SYSTEM §13.4). */
+.rw-meta {
+  font-size: var(--text-label);
+  color: var(--color-text-muted);
+  letter-spacing: var(--tracking-wide);
+}
+
+/* Skeleton loading primitive (§12.8: subtle opacity pulse, no bouncing spinner). This is the
+   shared base block; components add size/shape modifiers (e.g. AgentActivity's .skeleton--step).
+   Reduced-motion is honored globally below, so it never animates for users who opt out (§7.3). */
+.skeleton {
+  height: var(--space-8);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface-sunken);
+  border: var(--border-width) solid var(--color-border);
+  animation: rw-pulse var(--duration-slower) var(--ease-standard) infinite;
+}
+
 /* Visually hidden but available to screen readers (a11y). */
 .rw-sr-only {
   position: absolute;
@@ -267,4 +287,16 @@ hr {
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border-width: 0;
+}
+
+/* Shared opacity-only pulse (skeletons, live status dots). Reduced-motion is honored
+   globally above, so this never animates for users who opt out (§7.3). */
+@keyframes rw-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
 }

@@ -1,8 +1,9 @@
-"""POST /api/route/plan request-UNDERSTANDING behaviour (A2), updated for A3.
+"""POST /api/route/plan request-UNDERSTANDING behaviour (A2), updated for A3 and A7.
 
 A2 verified the endpoint extracts a TravelRequest and plans no route. In A3 the same endpoint now
 also runs the agent and decides a route, so the happy-path assertions below reflect a COMPLETED
-decision; the extraction, clarification, and error-contract guarantees are unchanged. Runs
+decision; the extraction, clarification, and error-contract guarantees are unchanged. A7 adds the
+recommended route's mock leg detail to the same response — understanding itself is untouched. Runs
 offline (no MODEL_STUDIO_API_KEY => deterministic mock extractor + mock candidates).
 """
 
@@ -26,7 +27,11 @@ def test_plan_understands_natural_language(client: TestClient) -> None:
     assert body["recommendation"] is not None
     assert body["recommendation"]["id"] == "R1"
     assert body["recommendation"]["data_source"] == "mock"
-    assert body["legs"] == []  # leg detail is a future Workstream B tool
+    # A7 (brief §9/§22): leg detail now comes from the mock get_route_details tool — simulated
+    # structure for the RECOMMENDED route, never a live timetable or a real seat.
+    assert [leg["id"] for leg in body["legs"]] == ["R1-L1", "R1-L2", "R1-L3"]
+    assert [leg["mode"] for leg in body["legs"]] == ["walk", "tuk", "train"]
+    assert all(leg["data_source"] == "mock" for leg in body["legs"])
     assert body["alternatives"]  # alternatives are returned
 
     req = body["request"]

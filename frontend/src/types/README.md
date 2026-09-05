@@ -7,8 +7,9 @@
 
 - **A1 ✅ foundation subset** (`api.ts`) — `HealthResponse`, `PlanRequest`, `PlanResponse`,
   `AgentAction`, the `AgentState` union (the **9 canonical agent states**), and `DataSource`.
-- **A8 ⏳** — the full route/leg/recommendation shapes as the interface is built out; types are
-  tightened as contracts mature.
+- **A8 ✅** — the full route/leg/recommendation shapes as the interface was built out.
+- **A9 ✅ (additive)** — `AgentAction.kind?` and `PlanResponse.request_id?`, mirroring the frozen
+  B/C integration baseline (API_CONTRACTS §2/§4).
 
 ## Boundaries
 

@@ -7,7 +7,9 @@
 
 - **A1 ✅:** `health.py` (`GET /health`), `route.py` (`POST /api/route/plan` **foundation
   stub** — honest `IDLE`, no fabricated route), and `router.py` (the `/api` aggregate).
-- **Later:** the real route-planning logic (**A9**) and agent status/stream routers (A5/A8/A9).
+- **A9 ✅:** `route.py` runs the full stabilized agent (extraction → bounded tool loop → decision)
+  with per-request `request_id` correlation and typed error mapping (`502`/`503`). The agent
+  status/stream routers were **decided against** — delivery stays single-shot (API_CONTRACTS §7).
 - Request validation, response shaping, and the structured error envelope — all per
   [`API_CONTRACTS.md`](../../../docs/API_CONTRACTS.md).
 

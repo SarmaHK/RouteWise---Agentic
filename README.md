@@ -4,7 +4,7 @@
 
 - **Competition:** AI Buildathon 2026
 - **Track:** Hospitality & Tourism
-- **Current phase:** A6 — Route Decision Engine ✅ (A1 foundation + A2 travel-request understanding + A3 agent state machine, tool abstraction, deterministic **mock** candidate provider and transparent decision engine + A4 capability-execution tool seam + A5 bounded multi-step Qwen tool-calling loop + A6 constraint-aware decision refinement — structured violations, robust normalization, delay-aware scoring, deterministic ranking — all wired into `POST /api/route/plan`; all route data is mock)
+- **Current phase:** A9 — Agent & API Stabilization, Observability & Integration Readiness ✅ (A1 foundation + A2 travel-request understanding + A3 agent state machine, tool abstraction, deterministic **mock** candidate provider and transparent decision engine + A4 capability-execution tool seam + A5 bounded multi-step Qwen tool-calling loop + A6 constraint-aware decision refinement — structured violations, robust normalization, delay-aware scoring, deterministic ranking + A7 a complete deterministic mock intelligence environment — one shared mock route-truth module, four `AVAILABLE` mock tools, `ROUTE_NOT_FOUND`, a multi-step mock-Qwen planner, per-route result merging and populated `legs` + A8 the polished two-column agent-experience UI + A9 stabilization — a per-request `request_id` correlation id, structured `event=…` observability logs, an action `kind` contract, honest planner provenance, a typed `503` for an unreachable model, capped tool-error detail, and a 20-test regression suite; all route data is still mock)
 - **Build sequencing:** Workstream A first; B & C documented now, built later to the same interfaces
 
 > 🤖 **AI agents: read [`AI_CONTEXT.md`](AI_CONTEXT.md) before doing anything.**
@@ -115,10 +115,10 @@ where a boundary is needed now). Mantra: **A decides, B informs, C acts.**
 | A3 | Agent Architecture | ✅ Complete |
 | A4 | Agent Tool System | ✅ Complete |
 | A5 | Tool-Calling Orchestrator | ✅ Complete |
-| **A6** | **Route Decision Engine** | ✅ **Current** |
-| A7 | Mock Intelligence Integration | ⏳ |
-| A8 | Agent Experience / UI | ⏳ |
-| A9 | Final API & Agent State | ⏳ |
+| A6 | Route Decision Engine | ✅ Complete |
+| **A7** | **Mock Intelligence Integration** | ✅ Complete |
+| **A8** | **Agent Experience / UI** | ✅ Complete |
+| **A9** | **Final API & Agent State** | ✅ **Current** |
 | A10 | Workstream B Handover | ⏳ |
 
 Do not auto-advance past the current phase.
@@ -186,13 +186,15 @@ npm run dev                       # http://localhost:5173 (Vite; CORS-enabled ag
 
 Open http://localhost:5173 — the app shell checks backend health and exercises
 `POST /api/route/plan`: the agent understands the request, shows its progress through the
-canonical states, and returns a **mock** recommendation with concise decision reasons and
+canonical states — including each **mock** tool call it made (search → fare → delay → details,
+marked ✓/✗) — and returns a **mock** recommendation with its legs, concise decision reasons and
 alternatives (or a clarification when a hard constraint is missing).
 
 **Verify:**
 
 - `pytest` from `backend/` — health, config, extraction, the agent state machine, decision engine,
-  orchestrator, and the route-plan API; the live Qwen connectivity tests are **skipped** unless
+  orchestrator, the tool seam, the mock intelligence providers, and the route-plan API; the live Qwen
+  connectivity tests are **skipped** unless
   `MODEL_STUDIO_API_KEY` is set.
 - `npm run build` from `frontend/` — type-checks (`tsc --noEmit`) then builds the production bundle.
 
@@ -204,8 +206,9 @@ alternatives (or a clarification when a hard constraint is missing).
 ## Status
 
 **A1 — Project Foundation, A2 — Travel Request Understanding, A3 — Agent Orchestration &
-Decision Engine, A4 — Tool System & Capability Execution, A5 — Tool-Calling Orchestrator, and
-A6 — Route Decision Engine are complete.** The documentation is **consolidated into an 8-doc system**
+Decision Engine, A4 — Tool System & Capability Execution, A5 — Tool-Calling Orchestrator,
+A6 — Route Decision Engine, and A7 — Mock Intelligence Integration & End-to-End Agent Validation are
+complete.** The documentation is **consolidated into an 8-doc system**
 covering all three workstreams (PROJECT, ARCHITECTURE, DESIGN_SYSTEM, API_CONTRACTS, AGENT_SPEC,
 WORKSTREAMS, DEVELOPMENT_RULES, DEMO), and the machine-readable design tokens live in
 `frontend/src/styles/tokens.css`.
@@ -213,9 +216,15 @@ WORKSTREAMS, DEVELOPMENT_RULES, DEMO), and the machine-readable design tokens li
 The backend (FastAPI) now runs a real agent layer: `POST /api/route/plan` extracts a validated
 `TravelRequest` (A2 — via Qwen when a key is set, else a deterministic mock), then the agent (A3)
 drives the canonical state machine `UNDERSTANDING → PLANNING → SEARCHING → EVALUATING → COMPLETED`,
-calls route tools through a safe capability seam (A4 — registry → executor → structured `ToolResult`,
-with only `search_routes` available on **mock** data), and lets **Qwen select** each tool call inside a
-bounded multi-step loop (A5). A **transparent deterministic decision engine** — refined in **A6** —
+calls route tools through a safe capability seam (A4 — registry → executor → structured `ToolResult`),
+and lets **Qwen select** each tool call inside a
+bounded multi-step loop (A5). Since **A7** that loop has a complete deterministic world to work in:
+`search_routes`, `get_fare_estimate`, `get_delay_prediction` and `get_route_details` are all
+`AVAILABLE` on **mock** data served by **one shared** provider (`backend/app/tools/intelligence.py`),
+so the tools can never disagree about a route and an unknown id is a structured `ROUTE_NOT_FOUND`
+failure rather than invented numbers. Observed results are merged **per route** into the agent context
+(the candidate stays authoritative; contradictions are reported), which also fills the response's
+`legs`. A **transparent deterministic decision engine** — refined in **A6** —
 validates hard
 constraints (origin, destination, budget, arrival deadline, availability) into **structured
 violations**, normalizes and preference-weights the survivors (walking, luggage, duration, transfers,
@@ -224,11 +233,13 @@ recommendation with concise grounded reasons plus honest alternatives (each with
 `strengths`, `trade_offs` and any `constraint_violations`) — or stops
 early for clarification, or reports honestly when nothing fits. The React + TypeScript shell shows the
 parsed request, the agent-progress
-timeline, the mock recommendation, its decision reasons, and alternatives. Backend tests pass and
+timeline (with a ✓/✗ per tool call), the mock recommendation, its **legs**, its decision reasons, and
+alternatives. Backend tests pass and
 the frontend build is verified.
 
-**All route data is MOCK** (Phases A3–A6): no live transit search, ML fare/delay prediction, GTFS,
+**All route data is MOCK** (Phases A3–A7): no live transit search, ML fare/delay prediction, GTFS,
 database, seat availability, booking, disruption monitoring, or Travel Pass — those are later
-phases (A7+) and Workstreams B/C. **Qwen is not used for route selection** (the decision is
+phases (A8+) and Workstreams B/C. `check_availability` and `prepare_booking` remain honest
+`NOT_IMPLEMENTED` stubs. **Qwen is not used for route selection** (the decision is
 deterministic); with no API key the backend uses the mock extractor, the mock AI client, and the mock
-tool-calling planner.
+tool-calling planner (`model: mock-qwen`).

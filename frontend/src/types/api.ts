@@ -113,12 +113,19 @@ export interface AgentAction {
   status?: string;
   timestamp?: string | null;
   data_source?: DataSource | null;
+  /**
+   * A9 additive: the machine-readable action type — understanding | clarification | planning |
+   * tool_call | evaluation | completion. Optional, so older responses still parse; the timeline
+   * renders from `state`/`label` regardless and never special-cases on it.
+   */
+  kind?: string | null;
 }
 
 /**
  * A single leg of a route (API_CONTRACTS §3). The backend serializes origin/destination under
- * the `from`/`to` aliases. Legs stay empty in A3 (route details arrive with a future B tool);
- * the shape is defined now so the contract is faithful and A8 can populate it.
+ * the `from`/`to` aliases. Legs were declared in A3 but stayed empty; **A7 populates them** with
+ * the recommended route's leg detail from the mock `get_route_details` tool, so they are still
+ * `data_source: mock` — simulated structure, never a live timetable or a real seat.
  */
 export interface Leg {
   id: string;
@@ -188,7 +195,14 @@ export interface Recommendation {
  * POST /api/route/plan response (API_CONTRACTS §2).
  * A3: `status` is COMPLETED with a mock `recommendation`, `alternatives`, the full
  * `agent_actions` trace, and a concise `reasoning` when the request can be planned; it stays
- * UNDERSTANDING with no recommendation when clarification is required. `legs` remain empty in A3.
+ * UNDERSTANDING with no recommendation when clarification is required.
+ *
+ * **A7 changes no field.** `legs` now carries the recommended route's leg detail, and
+ * `agent_actions` may hold several tool calls (search + fare + delay + details) in a
+ * planner-selected order — all still `data_source: mock`.
+ *
+ * **A9 (additive):** `request_id` correlates this response with the backend logs and the
+ * `X-Request-Id` response header. It identifies one execution, never a user, and may be absent.
  */
 export interface PlanResponse {
   status: AgentState;
@@ -198,4 +212,6 @@ export interface PlanResponse {
   alternatives?: Recommendation[];
   agent_actions: AgentAction[];
   reasoning?: string | null;
+  /** A9 additive: per-execution correlation id (matches the X-Request-Id header). */
+  request_id?: string | null;
 }

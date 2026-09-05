@@ -6,8 +6,10 @@
 > agent → tools → transit intelligence/ML → automation → data/external services.
 >
 > **Status:** **A1 (foundation), A2 (request understanding), A3 (agent orchestration & decision),
-> A4 (tool system & capability execution), A5 (multi-step Qwen tool-calling orchestrator), and A6
-> (constraint-aware decision-engine refinement) are implemented.** A FastAPI backend (config, logging,
+> A4 (tool system & capability execution), A5 (multi-step Qwen tool-calling orchestrator), A6
+> (constraint-aware decision-engine refinement), A7 (mock intelligence integration &
+> end-to-end agent validation), A8 (agent-experience UI) and A9 (agent & API stabilization,
+> observability & integration readiness) are implemented.** A FastAPI backend (config, logging,
 > CORS, `GET /health`, structured errors) now runs
 > a real agent layer: `POST /api/route/plan` extracts a validated `TravelRequest` (A2 — Qwen or a
 > deterministic mock), then `app/agent/` drives the canonical state machine and `app/agent/decision.py`
@@ -26,14 +28,29 @@
 > `constraint_violations[]`) → min–max normalize → preference-weighted score (delay risk **and** known
 > delay minutes) → deterministic rank → grounded explanation pipeline, with impossible candidate values
 > treated as unknown and recorded in `assumptions`. It consumes A5's `context.candidates` unchanged —
-> **no** orchestrator or tool-seam change. The React + Vite + TypeScript frontend (app shell + a
+> **no** orchestrator or tool-seam change. **A7 fills that seam with a complete deterministic mock
+> world** (`app/tools/intelligence.py` — one shared `MockRouteIntelligence`): `get_fare_estimate`,
+> `get_delay_prediction` and `get_route_details` join `search_routes` as `AVAILABLE` **mock** tools,
+> an unknown route id becomes a structured `ROUTE_NOT_FOUND` failure instead of invented data, the
+> `MockAgentPlanner` now exercises a real multi-step scenario (`model: mock-qwen`), and observed tool
+> results are merged **conservatively** into the agent context (candidate authoritative, conflicts
+> reported) — which populates `PlanResponse.legs`. The agent, the decision engine and the mock dataset
+> stay strictly layered (**agent → tools → mock providers → decision engine**), so
+> `intelligence.py` is the single Workstream-B replacement point. The React + Vite + TypeScript frontend (app shell + a
 > centralized `services/api` client)
 > shows the parsed request, the agent-progress timeline (per-tool status/source, and — A5 — any
 > `error_code`), and the mock decision — and, since **A6**, each route card's `rank` / `valid` /
 > `strengths` / structured violations, using the existing design tokens
 > (`frontend/src/styles/`) as the visual
-> source of truth. Everything else here (real tools, ML, automation, execution, the full component UI)
-> remains the **agreed plan** for A7+. All route data is **mock**. Keep it **suitable for a hackathon
+> source of truth. **A8** turned that skeleton into the polished two-column agent-experience UI
+> (`features/route-planner/` + the registered `components/{ui,agent,travel}`), and **A9 stabilized
+> the whole pipeline for integration**: a per-request `request_id` (`X-Request-Id` header +
+> `PlanResponse.request_id`), structured `event=…` observability logs on the existing logging
+> foundation, a machine-readable `kind` on every `AgentAction`, honest planner provenance
+> (`data_source`/`model` from the planner, not hard-coded), a typed retryable `503` when the live
+> model is unreachable, and capped tool-error detail — all additive, no new states, tools,
+> endpoints or dependencies. Everything else here (real tools, ML, automation, execution)
+> remains the **agreed plan** for A10+/B/C. All route data is **mock**. Keep it **suitable for a hackathon
 > MVP** — simple, demonstrable, mock-backed.
 
 ---
@@ -64,6 +81,14 @@ B (transit intelligence/ML) and C (execution/automation). In the MVP every tool 
 **mock**; B and C later replace the mocks behind the **same interfaces**, so agent code and the
 frontend do not change.
 
+> **A7 layering rule (enforced, not aspirational).** The flow above is strictly
+> **AGENT → TOOLS → MOCK PROVIDERS → DECISION ENGINE**. The agent and the decision engine
+> **never** import a mock dataset; they only ever see intelligence as a structured `ToolResult`
+> returned through the registry/executor. All four mock data tools share **one**
+> `MockRouteIntelligence` instance (`backend/app/tools/intelligence.py`), which is why they cannot
+> disagree about a route — and why Workstream B can replace that single module with real
+> GTFS/PostGIS/XGBoost/LSTM data without touching a line above the tool layer.
+
 ---
 
 ## 2. Workstream boundaries (A ↔ B ↔ C)
@@ -83,6 +108,11 @@ Each workstream owns a layer and communicates **only through documented interfac
   tool interfaces. B never makes decisions; it only returns data/predictions.
 - **MVP:** these tools are **mocked** (owned by A until B implements them — see
   [`WORKSTREAMS.md`](WORKSTREAMS.md) and A10 handover).
+- **A7:** all four are now `AVAILABLE` on **deterministic mock** data (`data_source: mock`,
+  `status: mock_data`) served by the shared `MockRouteIntelligence` — 7 routes over 3 corridors
+  (Colombo Fort↔Ella, Kandy↔Ella, Colombo Fort↔Kandy), route-level figures **and** leg detail that
+  provably sums to them. An id outside that dataset returns `ROUTE_NOT_FOUND`, never invented data.
+  **A7 informs; A6 still decides** — no scoring or constraint logic lives in the mock providers.
 
 ### A ↔ C  (Agent ⇄ Autonomous Execution/Cloud)
 
@@ -93,7 +123,9 @@ Each workstream owns a layer and communicates **only through documented interfac
 - **Boundary rule:** **irreversible actions belong to C and require explicit user
   confirmation.** A may *prepare/plan* an action but must not *commit* money/bookings.
   `prepare_booking` only prepares.
-- **MVP:** execution tools are **simulated** and labeled as such.
+- **MVP:** execution tools are **simulated** and labeled as such. **A7 leaves them as honest
+  `NOT_IMPLEMENTED` stubs** — no browser automation, booking, monitoring, Travel Pass, or cloud
+  deploy was built; the executor's availability gate means they can never fabricate a success.
 
 ### B ↔ C  (Transit Intelligence/ML ⇄ Execution/Cloud)
 
@@ -128,19 +160,18 @@ frontend/
     ├── App.*                    # shell: providers + routing + layout ONLY
     ├── pages/                   # thin screens: Landing, PlanTrip, NotFound
     ├── features/                # feature slices (heart of the app)
-    │   ├── travel-request/      # capture & submit the trip request
-    │   ├── agent-activity/      # agent steps/status/reasoning visualization
-    │   └── route-results/       # recommended route, alternatives, timeline, pass
-    │       └── (each: components/ hooks/ services/ state/ types.ts index.ts)
-    ├── components/              # SHARED, registered components (see DESIGN_SYSTEM.md §13)
-    │   ├── ui/                  # Button, Input, Select, Card, Badge, Modal, Tooltip, StatusIndicator
+    │   └── route-planner/       # 🟩 A8: the whole plan flow — request → agent rail → results
+    │       └── (RoutePlanner.tsx · RoutePlanner.css · index.ts)
+    ├── components/              # 🟩 SHARED, registered components (see DESIGN_SYSTEM.md §13)
+    │   ├── ui/                  # Button, Badge, Card, StatusIndicator, Alert (Input/Select/Modal/Tooltip still planned)
     │   ├── agent/               # AgentActivity, AgentStep, AgentStatus, ReasoningSummary
-    │   └── travel/              # TripForm, RouteCard, RouteTimeline, TransportLeg, FareDisplay, DelayBadge, TravelPass
+    │   └── travel/              # TripForm, RouteCard, RouteTimeline, TransportLeg, FareDisplay, DelayBadge, ModeIcon, TravelRequestSummary (TravelPass = Workstream C)
     ├── hooks/                   # cross-feature hooks (useMediaQuery, useAgentStream, useApi…)
     ├── services/
-    │   ├── api/                 # THE only place that calls the backend (client, routePlan, agentState)
-    │   ├── mock/                # frontend fallback fixtures (demo resilience; labeled simulated)
-    │   └── formatters/          # LKR currency, durations, times, distances
+    │   ├── api/                 # 🟩 THE only place that calls the backend (client, health, routePlan)
+    │   ├── format.ts            # 🟩 A8: formatters (LKR, durations, distances) + describeError
+    │   ├── agentState.ts        # 🟩 A8: agent-state labels, canonical order, visited-state helper
+    │   └── mock/                # ⏳ frontend fallback fixtures (demo resilience; deferred — not built in A8)
     ├── state/                   # shared client state (store + slices: agent, trip, route)
     ├── types/                   # shared domain types mirroring API_CONTRACTS.md
     ├── config/                  # env/config (API base URL, feature flags)
@@ -156,10 +187,23 @@ frontend/
 > `src/hooks`, `src/services`, `src/state`, `src/types`, and `src/styles` (real tokens).
 > **A1 also built the foundation app files** — `main.tsx`, `App.tsx`/`App.css`, `package.json`,
 > `index.html`, `vite.config.ts`, `tsconfig.json`, `config/env.ts`, `types/api.ts`, and
-> `services/api/` (the single backend client). Still **created when you build them** (A8): the
-> **feature slices** (`features/*`), **component groups** (`components/{ui,agent,travel}`), the
-> remaining **service groups** (`services/{mock,formatters}`), `state/`, `utils/`, and `assets/`
-> — do not pre-create empty leaf folders (see
+> `services/api/` (the single backend client).
+> **A8 built the product UI on that skeleton:** the shared **component groups**
+> (`components/{ui,agent,travel}`), the presentation **services** (`services/format.ts` +
+> `services/agentState.ts`), and the first **feature slice** (`features/route-planner/`). `App.tsx`
+> is now **shell-only** (header + connection `StatusIndicator` + `<RoutePlanner>`); all plan state
+> lives in the slice, and components call the backend only through `services/api`.
+>
+> **Deviation from the three-slice sketch (documented, per rule 5).** The A1 outline named three
+> slices (`travel-request`, `agent-activity`, `route-results`). All three derive from **one**
+> `POST /api/route/plan` response and share **one** state machine, so splitting them would fragment
+> that state across folders and create near-empty leaf dirs (which
+> [`DEVELOPMENT_RULES.md`](DEVELOPMENT_RULES.md) forbids pre-creating). A8 therefore ships **one
+> cohesive slice**, `features/route-planner/`, composing the shared components; it can be split
+> later if the flow grows genuinely independent sub-behaviors.
+>
+> Still **created when you build them**: `services/mock/` (demo-resilience fallback), `state/`,
+> `utils/`, `assets/`, and `pages/` — do not pre-create empty leaf folders (see
 > [`DEVELOPMENT_RULES.md`](DEVELOPMENT_RULES.md)).
 
 ### 3.2 Layer responsibilities & dependency direction
@@ -203,10 +247,12 @@ Lower layers never import from higher ones.
 ### 3.5 Tooling (decided in A1)
 
 **Chosen and installed in A1:** **Vite 5 + React 18 + TypeScript 5** (strict). TypeScript keeps
-`types/` mirroring the contracts and catches drift early. **Deferred to A8** (kept
-dependency-light per [`DEVELOPMENT_RULES.md`](DEVELOPMENT_RULES.md) rule 9): **ESLint + Prettier**
-and **Vitest + React Testing Library** — added with the first real components. Final choices are
-recorded here and in `frontend/README.md`.
+`types/` mirroring the contracts and catches drift early. **Still deferred after A8** (kept
+dependency-light per [`DEVELOPMENT_RULES.md`](DEVELOPMENT_RULES.md) rule 9 and the A8 "no new
+dependencies" constraint): **ESLint + Prettier** and **Vitest + React Testing Library**. A8 shipped
+the first real components **without** adding a runner — UI correctness is verified by `tsc --noEmit`
+(strict) + the production build + the backend suite + manual DOM checks. Add the runner/linters when
+the team accepts the dependency. Final choices are recorded here and in `frontend/README.md`.
 
 ---
 
@@ -220,20 +266,26 @@ foundation files**, **A2 added request understanding** (`schemas/travel_request.
 adapter + multi-step loop** (`services/ai/agent.py`; `agent/orchestrator.py` now runs the bounded
 loop; `config.py` gained `MAX_AGENT_ITERATIONS`; `schemas/route.py` gained `ToolCall.error_code`), and
 **A6 refined the decision engine** (`agent/decision.py`; `schemas/route.py` gained `ConstraintViolation`
-and the additive `Recommendation.rank` / `.valid` / `.strengths` / `.constraint_violations`) (✅):
+and the additive `Recommendation.rank` / `.valid` / `.strengths` / `.constraint_violations`), and
+**A7 added the mock intelligence layer** (`tools/intelligence.py` — the shared source of mock route
+truth; `tools/capabilities.py` gained the three intelligence tools; `tools/candidates.py` is now a thin
+facade over it; `tools/base.py` gained `ToolErrorCode.ROUTE_NOT_FOUND`; `agent/orchestrator.py` merges
+tool results and populates `PlanResponse.legs`) (✅):
 
 ```
 backend/
 ├── app/
 │   ├── main.py            # ✅ FastAPI entrypoint, CORS, router registration, error handlers
 │   ├── config.py          # ✅ settings/env (API keys via env only — never committed)
-│   ├── logging_config.py  # ✅ logging foundation
-│   ├── api/               # ✅ health.py · route.py (A3 extraction → A5 agent loop → decision) · router.py  (agent status/stream: A8/A9)
+│   ├── logging_config.py  # ✅ logging foundation + A9 request-id / structured-event helpers
+│   ├── api/               # ✅ health.py · route.py (A3 extraction → A5 agent loop → decision; A9 request-id + 503 mapping) · router.py  (agent status/stream: reserved, decided against in A9)
 │   ├── schemas/           # ✅ Pydantic models mirroring API_CONTRACTS.md (A2 travel_request.py · A3 candidate.py · A5 route.py: ToolCall.error_code · A6 route.py: ConstraintViolation + Recommendation.rank/valid/strengths/constraint_violations)
 │   ├── services/ai/       # ✅ AI abstraction (base · qwen_client · mock_client · factory) + A2 extraction.py + A5 agent.py (Qwen tool-calling planner)
-│   ├── agent/             # ✅ A3: state.py (state machine + execution context) · decision.py (scoring, refined in A6) · orchestrator.py (A5 bounded multi-step loop)
-│   └── tools/             # ✅ A3/A4: base.py (Tool ABC + ToolResult) · executor.py (A4 safe execution) · candidates.py (mock provider) · capabilities.py · registry.py (A→B/C seam)
-├── tests/                 # ✅ foundation + A2 extraction + A3 state/decision/agent/API + A4 tool contract/registry/execution/stub/integration + A5 qwen-tool-calling/agent-loop + A6 decision-engine (constraints/preferences/normalization/ranking/explanation/edge) tests
+│   ├── agent/             # ✅ A3: state.py (state machine + execution context; A9 run metadata) · decision.py (scoring, refined in A6) · orchestrator.py (A5 bounded multi-step loop; A7 merges tool results + legs; A9 observability events + timing)
+│   └── tools/             # ✅ A3/A4: base.py (Tool ABC + ToolResult) · executor.py (A4 safe execution) · registry.py (A→B/C seam) · capabilities.py (the concrete tools)
+│       ├── intelligence.py # ✅ A7: MockRouteIntelligence — the ONE shared source of mock route truth (the Workstream-B replacement point)
+│       └── candidates.py   # ✅ A3 mock provider, A7 thin facade over intelligence.py (kept for backwards compatibility)
+├── tests/                 # ✅ foundation + A2 extraction + A3 state/decision/agent/API + A4 tool contract/registry/execution/stub/integration + A5 qwen-tool-calling/agent-loop + A6 decision-engine + A7 mock-intelligence (provider consistency / fare / delay / details / registry / agent loop / decision integration) + A9 stabilization (isolation / determinism / action contract / observability / error mapping) tests
 ├── requirements.txt       # ✅ dependencies (requirements.txt chosen over pyproject.toml)
 ├── .env.example           # ✅ config template (never commit .env)
 └── README.md
@@ -246,6 +298,8 @@ Principles:
 - **Schemas mirror** [`API_CONTRACTS.md`](API_CONTRACTS.md) (`snake_case`, LKR money, ISO 8601
   `+05:30`, canonical agent states).
 - **Tools are the seam** to B and C: stable signatures, mock-backed now, real later.
+- **Mock data lives in exactly one place (A7).** `tools/intelligence.py` is the only module that
+  knows the routes; tools read it, and nothing above the tool layer imports it.
 - **CORS** enabled for the dev frontend origin.
 - **Secrets via environment only** (see [`DEVELOPMENT_RULES.md`](DEVELOPMENT_RULES.md)).
 
@@ -260,27 +314,34 @@ loop is:
 UNDERSTAND → REASON → ACT → ADAPT → DELIVER
 ```
 
-Conceptual internal pipeline (built in phases A2–A7; **[Understanding] ✅ A2**,
+Conceptual internal pipeline (built in phases A2–A7 — **all seven stages now implemented**;
+**[Understanding] ✅ A2**,
 **[Planning]/[Tool calling]/[Evaluation]/[Decision] ✅ A3 — deterministic, over mock data**,
 **[Tool calling] hardened in ✅ A4 — registry → executor → structured `ToolResult`**,
-**[Planning]+[Tool calling] made model-driven in ✅ A5 — a bounded multi-step Qwen loop**, and
+**[Planning]+[Tool calling] made model-driven in ✅ A5 — a bounded multi-step Qwen loop**,
 **[Evaluation]+[Decision] refined in ✅ A6 — structured violations, robust normalization, delay-aware
-scoring, deterministic ranking**):
+scoring, deterministic ranking**, and
+**[Tool calling]+[Evaluation] given a real multi-step mock world in ✅ A7 — four `AVAILABLE` mock
+tools over one shared dataset, results merged per route**):
 
 ```
 Travel request (text + structured fields)
    → [Understanding]  ✅ A2: parse → TravelRequest + constraints (hard/soft) + missing-info detection
    → [Planning]       ✅ A5: Qwen is given the TravelRequest + AVAILABLE tool defs and *selects* the
                         next tool (model-driven sequence, not hard-coded); bounded multi-step loop
-   → [Tool calling]   ✅ A4/A5: each selected call → registry → executor (validate + timeout + guards)
-                        → structured ToolResult fed back to Qwen; search_routes (mock, AVAILABLE);
-                        fare/delay/availability/booking = NOT_IMPLEMENTED (never fabricated)
-   → [Evaluation]     ✅ A3, refined ✅ A6: prepare/sanitize defensively → filter hard constraints
-                        (all violations kept, structured) → min–max normalize → weight by soft prefs
+   → [Tool calling]   ✅ A4/A5/A7: each selected call → registry → executor (validate + timeout + guards)
+                        → structured ToolResult fed back to Qwen; search_routes + fare/delay/details
+                        (all mock, all AVAILABLE, one shared dataset — A7);
+                        availability/booking = NOT_IMPLEMENTED (never fabricated);
+                        unknown route id = ROUTE_NOT_FOUND (never invented)
+   → [Evaluation]     ✅ A3, refined ✅ A6, fed ✅ A7: observed tool results are merged per route id
+                        (candidate stays authoritative, conflicts reported) → prepare/sanitize
+                        defensively → filter hard constraints (all violations kept, structured)
+                        → min–max normalize → weight by soft prefs
                         → subtract the delay penalty → deterministic rank (agent/decision.py)
    → [Decision]       ✅ A3, refined ✅ A6: recommendation + ranked alternatives, each with grounded
                         reasons / strengths / trade_offs / constraint_violations (never fabricated)
-   → [Adaptation]     on disruption → REPLANNING loop back to searching (A7+)
+   → [Adaptation]     on disruption → REPLANNING loop back to searching (A10+/Workstream C)
    → [Delivery]       recommendation + explanation + agent_actions (+ Travel Pass data)
 ```
 
@@ -294,7 +355,9 @@ Travel request (text + structured fields)
 - **State:** the agent reports one of the **9 canonical states** (see
   [`AGENT_SPEC.md`](AGENT_SPEC.md)); these drive the UI and the `status` field.
 - **Determinism:** same inputs + same mock data ⇒ same recommendation (critical for a reliable
-  demo).
+  demo). **A7 makes this testable end-to-end:** the shared mock dataset has no randomness, so the
+  golden Colombo Fort → Ella run always yields R1 (0.472) > R2 (0.408), R3 excluded — a computed
+  outcome, never a hard-coded one.
 - **Honesty:** every tool result carries `data_source`; mock is never presented as real-time.
 
 ---
@@ -316,19 +379,24 @@ Travel request (text + structured fields)
 11. On disruption → Agent REPLANNING → repeat 5–9 → updated recommendation
 ```
 
-> **A3–A6 scope:** steps **1–7 and 9–10** are implemented over **mock** candidates (extraction →
+> **A3–A7 scope:** steps **1–7 and 9–10** are implemented over **mock** candidates (extraction →
 > planning → deterministic scoring → decision → `agent_actions[]` → frontend). **A5** makes step **5**
 > a **model-driven, multi-step loop**: Qwen selects each tool call, which may revisit SEARCHING (and
 > reach EXECUTING when it picks an action tool). **A6** refines steps **6–7** (evaluation → decision)
 > without touching the loop: every candidate is validated against the hard constraints, normalized,
-> weighted, scored, ranked and explained from its **real** values. Step **8 (EXECUTING)** and step
+> weighted, scored, ranked and explained from its **real** values. **A7** makes steps **5–6** genuinely
+> multi-step: one request now calls `search_routes` **and** fare/delay/details per returned route, all
+> served from one shared mock dataset, and the observed results are merged into step **7** — which also
+> fills the `legs[]` the UI renders in step **10**. Step **8 (EXECUTING)** and step
 > **11 (REPLANNING)**
 > are still **not** truly exercised — `prepare_booking` / `check_availability` and disruption handling
-> are honest `not_implemented` stubs (A7); on the happy path the agent goes
-> **EVALUATING → COMPLETED**.
+> remain honest `not_implemented` stubs (Workstream C, A10+); on the happy path the agent goes
+> **EVALUATING → COMPLETED**. **A9** wraps the whole flow in correlation + observability: every run
+> carries a `request_id` and emits structured `event=…` log lines with per-tool and total durations.
 
-Agent steps/states are surfaced to the UI as `agent_actions[]` (embedded) and/or streamed —
-the frontend abstracts the mechanism (see §3.3).
+Agent steps/states are surfaced to the UI as `agent_actions[]` embedded in the single-shot
+`POST /api/route/plan` response. **A9 decided the delivery mechanism:** single-shot only — **no**
+streaming/SSE/WebSocket and no agent status endpoint (the reserved routes stay unbuilt).
 
 ---
 
@@ -336,15 +404,21 @@ the frontend abstracts the mechanism (see §3.3).
 
 - Frontend calls **`POST /api/route/plan`** (the reserved primary endpoint; an honest
   **foundation stub** in A1, a real **mock agent decision** in **A3**, a **model-driven multi-step
-  tool loop** in **A5**, a **constraint-aware ranked decision** in **A6**, live-data planning in **A9**).
+  tool loop** in **A5**, a **constraint-aware ranked decision** in **A6**, a **fully-populated mock
+  intelligence run** in **A7**, live-data planning in **Workstream B**).
 - Response carries `status` (canonical agent state), `request` (normalized), `recommendation`,
-  `legs[]`, `alternatives[]`, `agent_actions[]`, and `reasoning`. In A3 `legs[]` is empty and all
-  route figures are **mock**; `recommendation`/`alternatives`/`agent_actions` are populated. **A6** adds
+  `legs[]`, `alternatives[]`, `agent_actions[]`, and `reasoning`. All
+  route figures are **mock**; `recommendation`/`alternatives`/`agent_actions` are populated from A3.
+  **A6** adds
   four **additive** recommendation fields (`rank`, `valid`, `strengths`, `constraint_violations`) — no
-  new endpoint, no breaking change.
+  new endpoint, no breaking change. **A7** populates `legs[]` for the recommended route (it was empty
+  before) and lengthens `agent_actions[]` to a multi-tool trace — again **additive**: same endpoint,
+  same field names, same response keys. **A9** adds two more **additive, optional** fields —
+  `AgentAction.kind` and `PlanResponse.request_id` (mirroring the `X-Request-Id` header) — and
+  freezes the whole shape as the B/C integration baseline.
 - Optional (later) **`GET /api/agent/status`** and **`GET /api/agent/stream`** for live agent
-  activity — mechanism **TBD** in A8/A9 (**A5** keeps the whole loop in-request: a single response
-  with the full `agent_actions[]` trace, no streaming).
+  activity — mechanism **decided in A9**: **single-shot only** (a single response
+  with the full `agent_actions[]` trace, no streaming); both routes stay reserved and unbuilt.
 - Errors use a structured envelope. Full shapes in
   [`API_CONTRACTS.md`](API_CONTRACTS.md).
 
@@ -358,6 +432,13 @@ the frontend abstracts the mechanism (see §3.3).
 - **MVP:** all tools mocked behind the signatures in
   [`API_CONTRACTS.md` §6](API_CONTRACTS.md). B/C replace mocks later with **no signature
   change**.
+- **A7 mock tool flow.** Tool definitions exposed to the model are **derived from
+  `registry.list_available()`** — there is no second, hand-maintained tool list, so a newly
+  `AVAILABLE` tool joins the Qwen function schema automatically. Every call goes
+  `registry → executor` (availability gate → Pydantic validation → bounded run → malformed guard), so
+  a disabled/stubbed tool or a bad argument is a structured failure, never a crash and never a
+  fabricated success. The four data tools read the **one** shared `MockRouteIntelligence`, which is
+  what makes `get_fare_estimate("R1")` agree with the fare inside R1's `search_routes` candidate.
 
 ---
 
@@ -370,8 +451,13 @@ the frontend abstracts the mechanism (see §3.3).
 - **GTFS / mock GTFS-RT** → static schedules + simulated real-time feeds.
 - **Integration point:** B implements the **same tool interfaces** A already calls. Model
   artifacts live in `models/` (gitignored binaries); training/feature code in B's area.
-- **MVP:** none of this is implemented — A uses mocks. See
-  [`WORKSTREAMS.md`](WORKSTREAMS.md) and A7/A10.
+  **Since A7 the concrete replacement point is `backend/app/tools/intelligence.py`:** B supplies real
+  data behind `MockRouteIntelligence`'s accessors (`candidates_for` / `fare_estimate` /
+  `delay_prediction` / `route_details`) and the same four tool signatures, and nothing above the tool
+  layer — agent, decision engine, schemas, API, frontend — has to change. Swap the data source,
+  flip `data_source` to `live`, keep the contract.
+- **MVP:** none of this is implemented — A uses mocks (**A7**: deterministic, internally consistent
+  mocks, still labeled `mock`). See [`WORKSTREAMS.md`](WORKSTREAMS.md) and A10.
 
 ---
 

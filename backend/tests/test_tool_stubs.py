@@ -5,8 +5,13 @@ Prove the two honesty halves of the A4 tool set:
 * ``search_routes`` is the one capability that returns data — deterministic, and explicitly
   labelled ``data_source=mock`` (never presented as live);
 * an unknown corridor is an honest empty success, not an error and not an invented route;
-* every future B/C capability (fare, delay, route details, availability, booking) returns an
-  honest ``NOT_IMPLEMENTED`` structured result and fabricates **no** data.
+* every remaining Workstream-C capability (availability, booking) returns an honest
+  ``NOT_IMPLEMENTED`` structured result and fabricates **no** data.
+
+**A7 note (brief §11):** ``get_fare_estimate``, ``get_delay_prediction`` and ``get_route_details``
+were stubs in A4 and are now AVAILABLE deterministic *mock* tools, so they moved out of ``_STUBS``
+below. Their behaviour is covered by ``tests/test_mock_intelligence_a7.py`` (scenarios 6–15);
+this module keeps proving the honesty of the two capabilities Workstream C still owns.
 """
 
 from __future__ import annotations
@@ -16,11 +21,8 @@ from app.schemas.route import DataSource
 from app.tools.base import ToolErrorCode, ToolStatus
 from app.tools.registry import build_tools
 
-# The five honest stubs (real implementations belong to Workstream B/C — brief §10).
+# The two honest stubs left after A7 (real implementations belong to Workstream C — brief §11).
 _STUBS = (
-    "get_fare_estimate",
-    "get_delay_prediction",
-    "get_route_details",
     "check_availability",
     "prepare_booking",
 )
@@ -65,7 +67,7 @@ def test_unknown_corridor_returns_empty_success() -> None:
 
 
 # --- Future stubs (brief §10/§21, §18 "Future stubs") --------------------------------- #
-# 4. Every future B/C capability returns an honest NOT_IMPLEMENTED structured result.
+# 4. Every remaining Workstream-C capability returns an honest NOT_IMPLEMENTED result.
 def test_future_stubs_return_not_implemented() -> None:
     registry = _registry()
     for name in _STUBS:
@@ -80,11 +82,12 @@ def test_future_stubs_return_not_implemented() -> None:
         assert "not implemented" in result.message.lower()
 
 
-# 5. Fare/delay/availability stubs never fabricate numbers, even given a plausible payload.
+# 5. The availability/booking stubs never fabricate numbers, even given a plausible payload.
 def test_stubs_never_fabricate_data() -> None:
     registry = _registry()
-    for name in ("get_fare_estimate", "get_delay_prediction", "check_availability"):
+    for name in _STUBS:
         result = registry.execute(name, {"route_id": "R1"})
-        assert result.data is None  # no invented fare / delay / availability
+        assert result.data is None  # no invented seat availability / booking reference
         assert result.success is False
         assert result.status is ToolStatus.not_implemented
+        assert result.data_source is DataSource.mock

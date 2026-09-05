@@ -1,0 +1,102 @@
+/* RoutePlanner — the plan-flow feature layout (DESIGN_SYSTEM §12.1 two-column shell, §12.2 grid,
+   §12.3 responsive). Tokens only (§15). The agent activity rail is the persistent right column at
+   ≥ lg and stacks below the main column on smaller screens (bottom-sheet deferred — §12.1). */
+
+.app-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-6);
+  align-items: start;
+}
+
+.app-shell__main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  min-width: 0;
+}
+
+.app-shell__rail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+/* Current-state chip at the head of the rail (§12.9): a small card surface so the dot + label
+   reads as an intentional status, not stray text. */
+.app-shell__rail-status {
+  align-self: flex-start;
+  padding: var(--space-2) var(--space-3);
+  background-color: var(--card-bg);
+  border: var(--card-border);
+  border-radius: var(--card-radius);
+}
+
+/* Desktop (≥ lg 1024px): main content + persistent rail (§12.1). The rail sticks while the
+   (usually taller) main column scrolls, so the agent's progress stays in view. */
+@media (min-width: 1024px) {
+  .app-shell {
+    grid-template-columns: minmax(0, 1fr) var(--sidebar-width);
+  }
+
+  .app-shell__rail {
+    position: sticky;
+    top: calc(var(--header-height) + var(--space-6));
+  }
+}
+
+/* ---------- Page head (screen hero: one h1, §12.7) ---------- */
+.page-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.page-head__lead {
+  font-size: var(--text-body);
+  color: var(--color-text-secondary);
+}
+
+/* ---------- Results region ---------- */
+.results {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.results__title {
+  font-size: var(--text-h3);
+}
+
+.results__status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* ---------- Alternatives + understood-request sub-sections ---------- */
+.alternatives,
+.understood {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.alternatives__title,
+.understood__title {
+  font-size: var(--text-body);
+  font-weight: var(--font-semibold);
+  color: var(--color-text-primary);
+}
+
+/* Clarification questions inside the warning Alert (§12.8). */
+.clarify-list {
+  margin: var(--space-2) 0 0;
+  padding-left: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  color: var(--color-text-secondary);
+}

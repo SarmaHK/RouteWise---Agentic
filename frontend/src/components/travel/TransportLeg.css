@@ -1,0 +1,88 @@
+/* TransportLeg — DESIGN_SYSTEM §11.6/§12.10. Tokens only (§15). */
+
+.transport-leg {
+  position: relative;
+  display: grid;
+  grid-template-columns: var(--space-8) 1fr;
+  gap: var(--space-3);
+  padding-bottom: var(--space-4);
+}
+
+/* Connector between leg icons — the "route line" running down the timeline (§11.6). */
+.transport-leg:not(:last-child)::before {
+  content: '';
+  position: absolute;
+  left: calc(var(--space-8) / 2);
+  top: var(--space-8);
+  bottom: 0;
+  width: var(--timeline-line-width);
+  transform: translateX(calc(var(--timeline-line-width) / -2));
+  background-color: var(--timeline-line-color);
+}
+
+.transport-leg__icon {
+  display: grid;
+  place-items: center;
+  width: var(--space-8);
+  height: var(--space-8);
+  border-radius: var(--radius-full);
+  background-color: var(--color-surface-sunken);
+  border: var(--border-width) solid var(--color-border);
+}
+
+.transport-leg__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.transport-leg__head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.transport-leg__mode {
+  font-size: var(--text-body-sm);
+  font-weight: var(--font-semibold);
+  color: var(--color-text-primary);
+  text-transform: capitalize;
+}
+
+.transport-leg__route {
+  font-size: var(--text-body-sm);
+  color: var(--color-text-secondary);
+}
+
+/* Delay risk sits at the far edge of the head row. */
+.transport-leg__delay {
+  margin-left: auto;
+}
+
+/* Per-leg figures are data → mono (§14); separated by a middot. */
+.transport-leg__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: var(--text-label);
+  color: var(--color-text-secondary);
+}
+
+.transport-leg__meta span {
+  font-family: var(--font-mono);
+}
+
+.transport-leg__meta > * + *::before {
+  content: '·';
+  margin-right: var(--space-2);
+  color: var(--color-text-muted);
+}
+
+.transport-leg__notes {
+  font-size: var(--text-body-sm);
+  color: var(--timeline-trace-text);
+  line-height: var(--leading-snug);
+}

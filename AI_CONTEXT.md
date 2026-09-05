@@ -115,43 +115,52 @@ A2 Travel Request Understanding   ✅ implemented
 A3 Agent Architecture             ✅ implemented / orchestration + decision
 A4 Agent Tool System              ✅ implemented / tool contract + registry + executor
 A5 Tool-Calling Orchestrator      ✅ implemented / bounded multi-step Qwen tool loop
-A6 Route Decision Engine          ← current / refined deterministic decision engine
-A7 Mock Intelligence Integration
-A8 Agent Experience / UI
-A9 Final API & Agent State
+A6 Route Decision Engine          ✅ implemented / refined deterministic decision engine
+A7 Mock Intelligence Integration  ✅ implemented / four AVAILABLE mock tools + end-to-end agent proof
+A8 Agent Experience / UI          ✅ implemented / two-column agent-experience UI (presentation only)
+A9 Final API & Agent State        ← current / stabilization, observability & integration readiness
 A10 Workstream B Handover
 ```
 
-**CURRENT PHASE: A6 — Route Decision Engine (decision refinement & constraint-aware route
-optimization).**
+**CURRENT PHASE: A9 — Agent & API Stabilization, Observability & Integration Readiness (make the
+A1–A8 pipeline predictable, observable and safe to integrate — no new features, no architecture
+redesign).**
 
-Do **not** auto-advance into A7 or any later phase. Wait for an explicit human instruction. A6
-**refines and strengthens** the A3 `DecisionEngine` (`backend/app/agent/decision.py`) — it does not
-replace the A3/A4/A5 architecture, and the public contract `decide(request, candidates) -> Decision`
-is unchanged (no orchestrator, tool, endpoint, or candidate-schema change was needed). The pipeline
-is explicit: candidate **preparation/sanitization** → **hard-constraint validation** → **feature
-normalization** → **preference-weighted scoring** → **deterministic ranking** → recommendation +
-alternatives + concise explanation.
+Do **not** auto-advance into A10 or any later phase. Wait for an explicit human instruction. A9 is
+**stabilization only** — it adds no states, tools, endpoints, dependencies or UI features; it makes
+the existing single-shot `POST /api/route/plan` pipeline consistent and observable.
 
-- **Hard constraints** (origin, destination, budget ceiling, arrival deadline, and an explicitly
-  `unavailable` service) are checked deterministically and **every** violation is reported as a
-  structured `ConstraintViolation` (`type` + grounded `message`) in a fixed precedence order — an
-  excluded candidate is never silently discarded.
-- **Soft preferences** (`walking_preference`, `luggage`) only re-rank candidates that already passed
-  the hard filter; they adjust fixed weights (never LLM-generated) which are renormalized to sum to 1.
-- **Delay** data is *consumed* when present (`delay_risk` plus a small, capped `delay_min_estimate`
-  penalty) but never *predicted* — that stays Workstream B, behind the same fields.
-- **Impossible values** (negative / `NaN` / infinite), malformed candidates and duplicate ids are
-  treated as **unknown** and recorded as assumptions — never silently accepted, never invented.
-- Each route card now carries the additive fields `rank` / `valid` / `strengths` /
-  `constraint_violations` (mirrored in `frontend/src/types/api.ts`), and `alternatives[]` is ordered
-  valid runners-up first, then clearly-marked exclusions.
+- **Correlation + observability:** every run carries a lightweight `request_id` (echoed as the
+  `X-Request-Id` response header and on `PlanResponse.request_id`), and the backend emits structured
+  `event=… key=value` log lines (`request.received`, `agent.start`, `tool.selected`,
+  `tool.executed`/`tool.failed`, `decision.completed`, `agent.completed`/`agent.errored`,
+  `plan.responded`) — never an API key, never the traveller's raw text, never hidden chain-of-thought.
+- **Action contract:** every `agent_actions[]` entry carries a machine-readable `kind`
+  (`understanding | clarification | planning | tool_call | evaluation | completion`) alongside
+  `seq`/`state`/`label`/`status`/`data_source` — the frontend renders the trace generically, with no
+  per-phase special-casing.
+- **Honest provenance:** the PLANNING action reports the *planner's* `data_source`/`model` (live
+  Qwen vs deterministic mock) instead of a hard-coded `mock`; route facts stay `mock` either way.
+- **Error contract:** an unreachable live model is a typed, retryable `503` (`service_unavailable`),
+  distinct from malformed model output (`502`) and internal bugs (`500`); tool error messages are
+  capped so a verbose upstream exception cannot flood the trace.
+- **Isolation & determinism:** each request gets a fresh execution context (regression-tested); the
+  mock pipeline is deterministic — same request + same mock data ⇒ same recommendation.
+- **Integration baseline frozen:** `TravelRequest`, `Candidate`, `ToolResult`, `ToolCall`,
+  `AgentAction`, `Recommendation`, `PlanResponse` are the B/C baseline. A9's only contract changes
+  are **additive + optional** (`AgentAction.kind`, `PlanResponse.request_id`).
 
-The engine remains **deterministic**: Qwen selects tools (A5) but never chooses the winner, and the
-golden Colombo Fort → Ella demo still resolves by reasoning over the data (heavy bag + minimize
-walking → R1; the same candidates with no preferences → R2). All route data is still **mock**. Do not
-start real Workstream B/C work (ML models, PostGIS, GTFS ingestion, browser automation, booking,
-Travel Pass generation) or A7+ logic — those are later phases.
+The data behind the UI is still the **A7 mock intelligence** (one shared dataset in
+`backend/app/tools/intelligence.py`; four `AVAILABLE` mock tools). The golden Colombo Fort → Ella demo
+still resolves to **R1 (score 0.472)** over **R2 (0.408)**, with **R3 excluded** on the LKR 2,000
+budget — A9 changes how a run is *identified, measured and logged*, not what it *decides*.
+
+All route data is still **mock**: no XGBoost, no LSTM, no PostgreSQL/PostGIS, no GTFS or GTFS-RT, no
+external transit API, no browser automation, no booking, no Travel Pass, **no streaming/SSE/WebSocket**
+(the single-shot response is the decided delivery mechanism — the reserved status/stream endpoints
+stay unbuilt). Workstream B later replaces the provider *behind* these exact tool signatures
+(`app/tools/intelligence.py` is the documented replacement point). Do not start real Workstream B/C
+work or A10+ logic — those are later phases.
 
 ---
 
@@ -173,13 +182,16 @@ RouteWise - Agentic/
 │   └── DEMO.md
 ├── frontend/              ← React + Vite + TS app (Workstream A UI + design tokens)
 │   ├── README.md
-│   ├── src/main.tsx · App.tsx                 ← app shell (request input → agent progress timeline → mock decision); A5 renders the multi-step tool trace; A6 renders the structured route comparison (strengths · trade-offs · constraint violations)
+│   ├── src/main.tsx · App.tsx                 ← A8: App.tsx is a shell only (header + connection StatusIndicator + <RoutePlanner>); the plan flow lives in features/route-planner/
+│   ├── src/features/route-planner/            ← A8: the one feature slice (request → agent activity rail → results); calls the backend only via services/api
+│   ├── src/components/{ui,agent,travel}/      ← A8: registered shared components (ui: Button·Badge·Card·StatusIndicator·Alert · agent: AgentActivity·AgentStep·AgentStatus·ReasoningSummary · travel: TripForm·RouteCard·RouteTimeline·TransportLeg·FareDisplay·DelayBadge·ModeIcon·TravelRequestSummary)
 │   ├── src/services/api/                      ← the ONLY backend caller (client · health · routePlan)
-│   ├── src/config/env.ts · src/types/api.ts   ← runtime config + contract-mirroring types (A5: ToolCall.error_code · A6: Recommendation rank/valid/strengths/constraint_violations)
+│   ├── src/services/format.ts · agentState.ts ← A8: presentation formatters + the agent-state label/order map (no business logic)
+│   ├── src/config/env.ts · src/types/api.ts   ← runtime config + contract-mirroring types (A5: ToolCall.error_code · A6: Recommendation rank/valid/strengths/constraint_violations · A7: Leg populated)
 │   └── src/styles/tokens.css · globals.css    ← CSS source of truth for the design system
-├── backend/               ← FastAPI (Workstream A agent + API) — A1 foundation + A2 understanding + A3 agent + A4 tools + A5 tool loop + A6 decision refinement
+├── backend/               ← FastAPI (Workstream A agent + API) — A1 foundation + A2 understanding + A3 agent + A4 tools + A5 tool loop + A6 decision refinement + A7 mock intelligence
 │   ├── README.md
-│   └── app/ (main · config · logging_config · api/ · schemas/ · agent/ · tools/ · services/ai/ incl. extraction + agent tool-calling planner) · tests/
+│   └── app/ (main · config · logging_config · api/ · schemas/ · agent/ · tools/ incl. intelligence.py shared mock route truth · services/ai/ incl. extraction + agent tool-calling planner) · tests/
 ├── data/                  ← mock/static data (shared; real GTFS is Workstream B)
 │   └── README.md
 ├── models/                ← ML artifacts (Workstream B — DO NOT implement yet)

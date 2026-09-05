@@ -194,6 +194,7 @@ def test_plan_response_with_expanded_legs(b_settings):
     from app.agent.orchestrator import build_agent
     from app.schemas.route import AgentState
     from app.services.ai.extraction import get_extractor
+    from starlette.responses import Response
 
     plan_req = PlanRequest(
         origin="Colombo Fort",
@@ -206,8 +207,9 @@ def test_plan_response_with_expanded_legs(b_settings):
     # Invoke plan_route with b_settings, extractor, and agent
     agent = build_agent(b_settings)
     extractor = get_extractor()
+    mock_response = Response()
     response: PlanResponse = plan_route(
-        plan_req, extractor=extractor, agent=agent, settings=b_settings
+        plan_req, response=mock_response, extractor=extractor, agent=agent, settings=b_settings
     )
     assert response.status == AgentState.COMPLETED
     assert response.recommendation is not None
