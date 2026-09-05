@@ -165,6 +165,10 @@ class TravelPassGenerator:
 
     def render_html(self, p: TravelPass) -> str:
         """Render a self-contained, offline-ready HTML voucher per DESIGN_SYSTEM.md §11.9."""
+        return self.render_html_voucher(p)
+
+    def render_html_voucher(self, p: TravelPass) -> str:
+        """Render a self-contained, offline-ready HTML voucher per DESIGN_SYSTEM.md §11.9."""
         legs_html = []
         mode_icons = {
             "walk": "🚶",
