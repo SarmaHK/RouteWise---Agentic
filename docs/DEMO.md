@@ -9,13 +9,17 @@
 > so all three workstreams build toward one coherent story. **A3 demonstrates steps 1–10 of the
 > §3 walkthrough over mock data** (request → understanding → planning → mock search → evaluation →
 > decision → explanation → alternatives, with a MOCK tag), **A4 hardens the tool seam behind step 5**
-> (a real registry + executor; the tool trace shows each tool's availability + data source), and **A5
+> (a real registry + executor; the tool trace shows each tool's availability + data source), **A5
 > makes step 5 autonomous + multi-step** (Qwen *selects* each tool call in a bounded loop; the trace
-> can now show several model-chosen calls, each with its status/source and any `error_code`), and **A6
+> can now show several model-chosen calls, each with its status/source and any `error_code`), **A6
 > deepens steps 7–10** (each route card now carries a 1-based `rank`, a `valid` flag, grounded
 > `strengths`, and structured `constraint_violations`, so an excluded route is *shown with its reason*
-> rather than silently dropped). **Step
-> 11 (disruption/re-planning) and step 12 (Travel Pass) are not built** (A7+ / Workstream C). All
+> rather than silently dropped), and **A7 makes steps 5–6 a real multi-tool intelligence run**
+> (`search_routes` + `get_fare_estimate` + `get_delay_prediction` + `get_route_details` are all
+> `AVAILABLE` on **one shared deterministic mock dataset**, so the trace shows a genuine
+> search → enrich → evaluate workflow, the recommended route card gains a per-leg breakdown, and each
+> timeline tool line is marked ✓/✗ from its real status). **Step
+> 11 (disruption/re-planning) and step 12 (Travel Pass) are not built** (A8+ / Workstream C). All
 > route data is **mock**.
 
 ---
@@ -57,8 +61,8 @@ The demo must prove the Agent can **reason**, not recite:
 | 2 | **Agent understanding** | Activity rail lights up: "Understanding your request…" | UNDERSTANDING | `AgentActivity`, `AgentStatus` |
 | 3 | **Constraint extraction** | Extracted constraints appear as chips: Colombo Fort → Ella, budget LKR 2,000, heavy bag, minimal walking. | UNDERSTANDING | constraint chips |
 | 4 | **Planning** | "Planning your journey…" — agent outlines which tools it will call. | PLANNING | `AgentStep` |
-| 5 | **Tool calls** | Expandable **mono** tool traces — **A5:** the sequence is **model-selected** (Qwen picks each call in a bounded loop), e.g. `search_routes(...)`, then optionally `get_fare_estimate(...)`/`get_delay_prediction(...)` (currently honest `NOT_IMPLEMENTED` stubs). | SEARCHING (→ EXECUTING for an action tool) | `AgentStep` (tool trace) |
-| 6 | **Transit intelligence** | Candidate routes stream in with fares + delay risk (labeled **simulated**). | SEARCHING | `RouteCard`s |
+| 5 | **Tool calls** | Expandable **mono** tool traces — **A5:** the sequence is **model-selected** (Qwen picks each call in a bounded loop). **A7:** there is now a real multi-step sequence to pick from — `search_routes(...)` then `get_fare_estimate(...)` / `get_delay_prediction(...)` / `get_route_details(...)` per returned route, all `AVAILABLE` on **mock** data (✓/✗ shown from each call's real status). `check_availability` / `prepare_booking` remain honest `NOT_IMPLEMENTED` stubs. | SEARCHING (→ EXECUTING for an action tool) | `AgentStep` (tool trace) |
+| 6 | **Transit intelligence** | Candidate routes stream in with fares + delay risk (labeled **simulated**). **A7:** those fares/delays now come from the mock intelligence tools and are **consistent with the candidates** (one shared dataset); the recommended route card also lists its **legs** (mode, from→to, duration, fare, walk, delay risk). | SEARCHING | `RouteCard`s |
 | 7 | **Route evaluation** | "Comparing 3 routes…" — scores/trade-offs shown; over-budget routes filtered out. **A6:** every candidate is validated, normalized and scored deterministically; an excluded route keeps its structured violation (e.g. `BUDGET`) instead of disappearing. | EVALUATING | `RouteCard`, `FareDisplay`, `DelayBadge` |
 | 8 | **Decision** | Recommended route highlighted (primary accent + "Recommended"). **A6:** the winner is the top **valid** candidate by `rank`; with zero valid candidates no route is recommended at all. | EVALUATING → EXECUTING | `RouteCard` (recommended) |
 | 9 | **Explanation** | `ReasoningSummary`: *"Meets your LKR 2,000 budget, minimizes walking with a heavy bag…"* **A6:** reasons and `strengths` quote the candidate's real values only — never a fact that does not exist. | COMPLETED | `ReasoningSummary` |
@@ -70,19 +74,27 @@ The demo must prove the Agent can **reason**, not recite:
 > pass delivery) touch **Workstream C**. In the demo they are backed by **mocks/simulation**
 > behind the real interfaces (see [`WORKSTREAMS.md`](WORKSTREAMS.md)).
 >
-> **A3–A6 coverage:** steps **1–10** run end-to-end over the deterministic **mock** candidate
+> **A3–A7 coverage:** steps **1–10** run end-to-end over the deterministic **mock** intelligence
 > provider — the agent *reasons* (filters hard constraints, scores soft preferences, ranks); it does
-> not recite a hard-coded winner. Step **5** is now a **bounded multi-step Qwen loop** (A5): the model
+> not recite a hard-coded winner. Step **5** is a **bounded multi-step Qwen loop** (A5): the model
 > *selects* each tool call, which runs through the A4 seam (registry → executor → structured result).
-> In practice the **mock** planner (no API key) picks `search_routes` once then finalizes;
-> `search_routes` is `AVAILABLE` on **mock** data, while the fare/delay/availability/booking tools are
-> honest `NOT_IMPLEMENTED` stubs (B/C), so if the model calls them the trace shows their status/source
-> (and `error_code`) without fabricating numbers. The loop is capped at `MAX_AGENT_ITERATIONS`
-> (default 8) and never invents a recommendation on the limit. Steps **6–10** are decided by the **A6**
+> With no API key the **mock** planner (`model: mock-qwen`) drives a realistic scenario —
+> `search_routes` for the corridor, then `get_fare_estimate` for every returned route, then
+> `get_delay_prediction` for every returned route, then `get_route_details` for every returned route,
+> then finalize.
+> All four data tools are `AVAILABLE` on **mock** data read from **one shared dataset**
+> (`backend/app/tools/intelligence.py`), so they can never disagree about a route; an unknown id
+> (e.g. `R999`) is a structured `ROUTE_NOT_FOUND` failure, not invented numbers.
+> `check_availability` / `prepare_booking` are still honest `NOT_IMPLEMENTED` stubs (C), so if the model
+> calls them the trace shows their status/source (and `error_code`) without fabricating numbers. The
+> loop is capped at `MAX_AGENT_ITERATIONS` (default 8) and never invents a recommendation on the limit.
+> Steps **6–10** are decided by the **A6**
 > engine over those tool-gathered candidates: malformed/duplicate candidates are skipped, impossible
 > values count as unknown (recorded in `assumptions`), features are min–max normalized, `walking_preference`
 > and `luggage` re-weight the score, `delay_risk`/known delay minutes are penalized (**consumed, never
-> predicted**), and the result is ranked with a deterministic tie-break. Steps **11–12** (re-planning,
+> predicted**), and the result is ranked with a deterministic tie-break. **A7 feeds that engine but does
+> not change it** — observed tool results are merged per route id with the **candidate kept
+> authoritative** and any contradiction reported. Steps **11–12** (re-planning,
 > Travel Pass) are **not implemented** yet.
 
 ---
@@ -120,6 +132,19 @@ do **not** hard-code the "winner".
   alone (R2 0.481) also select R2. It is the **combination** that tips the decision, which is exactly
   the "reasoning, not recitation" proof point.
 
+  **A7, measured end-to-end (mock planner, no API key, deterministic):** the same numbers now come out
+  of the **full agent loop**, not just the engine in isolation. One `POST /api/route/plan` with the
+  golden request produces a **14-action** trace over only the five canonical states
+  (`UNDERSTANDING → PLANNING → SEARCHING ×10 → EVALUATING → COMPLETED`):
+  `search_routes(Colombo Fort → Ella)` returns R1/R2/R3 → `get_fare_estimate` for **R1, R2, R3** →
+  `get_delay_prediction` for **R1, R2, R3** → `get_route_details` for **R1, R2, R3** (all ten calls
+  `status: done`, `data_source: mock`). Result:
+  **recommendation R1 at 0.472**, **alternative R2 at 0.408**, **R3 excluded** (`BUDGET` — LKR 2,350 >
+  LKR 2,000, still shown as a marked alternative), and **`legs` = R1-L1 (walk) / R1-L2 (tuk) /
+  R1-L3 (train)** whose durations, fares and walking distances sum exactly to R1's candidate totals.
+  Every tool result carries `data_source: mock`; the winner is computed from the observed evidence and
+  is **not** hard-coded anywhere.
+
 ### 4.2 Delayed route (delay risk → re-plan)
 
 - **Trigger:** inject a delay on the chosen route's key leg (e.g., train delayed ~40 min) via the
@@ -128,6 +153,11 @@ do **not** hard-code the "winner".
   **REPLANNING** → agent re-searches, presents a new recommendation, and explains **what changed
   and why**.
 - **Shows:** the **ADAPT** stage and honest delay handling (no fabricated on-time claims).
+- **A7:** `get_delay_prediction` is now an `AVAILABLE` **mock** tool returning
+  `{ delay_risk, delay_min_estimate, … , data_source: mock }` from the shared dataset (R1 `low`/10 min,
+  R2 `moderate`, R3 `low`), and the A6 engine already penalizes both risk and known minutes — so the
+  *consume-a-delay* half of this scenario is live. The **REPLANNING** half (a disruption signal that
+  re-opens the loop) is **not** built: it needs the Workstream-C signal and lands in A8+.
 
 ### 4.3 Unavailable route (availability → fallback)
 
@@ -140,6 +170,9 @@ do **not** hard-code the "winner".
 - **A6:** `availability` is an explicit hard constraint — a candidate is excluded **only** when it is
   explicitly `unavailable`, and the exclusion carries a structured `AVAILABILITY` violation. The A-phase
   default is `unknown`, which is **not** treated as a violation (the agent never claims real seats).
+- **A7:** **unchanged — deliberately.** `check_availability` is a Workstream-C tool and stays an honest
+  `NOT_IMPLEMENTED` stub, so this scenario still cannot be demoed live; if the model calls it, the trace
+  shows `not_implemented` + `NOT_IMPLEMENTED` rather than a fabricated seat count.
 
 ### 4.4 Re-planning (constraint change)
 
@@ -162,8 +195,16 @@ do **not** hard-code the "winner".
   when it was only simulated (see [`AGENT_SPEC.md` §15–16](AGENT_SPEC.md)).
 - Mock values should be **realistic** (plausible Sri Lankan routes, LKR fares, believable
   delays/times) so the demo is credible — but they are **fixtures**, not live feeds.
+- **A7 — one shared fixture, not four.** All mock intelligence lives in a single module
+  (`backend/app/tools/intelligence.py`, 7 routes over 3 corridors) that every data tool reads, and it
+  contains **no randomness**: the same request always produces the same trace and the same decision.
+  Its figures are internally consistent by construction (leg durations/fares/walking sum to the route
+  totals; vehicle legs − 1 = transfers), so the demo can be challenged on any number and every view
+  will agree.
 - Mock fixtures live behind the **same tool interfaces** B/C will implement, so swapping in real
-  data changes nothing in the demo flow (only the source).
+  data changes nothing in the demo flow (only the source). **That swap point is now concrete:**
+  replace `intelligence.py`'s accessors with real GTFS/PostGIS/XGBoost/LSTM data, flip `data_source`,
+  and the agent, decision engine, API and UI are untouched.
 
 ---
 
@@ -206,6 +247,7 @@ do **not** hard-code the "winner".
 - [ ] Demo is repeatable (deterministic seed) and resilient (fallbacks ready).
 
 > **This is the target all workstreams build toward.** A3 delivers steps 1–10 over mock data, A4
-> hardens the tool execution behind step 5, A5 makes that step an autonomous multi-step Qwen loop, and
-> A6 deepens the evaluation/decision behind steps 7–10;
-> the full demo (including steps 11–12) completes across A7–A9 + Workstreams B/C.
+> hardens the tool execution behind step 5, A5 makes that step an autonomous multi-step Qwen loop,
+> A6 deepens the evaluation/decision behind steps 7–10, and A7 gives steps 5–6 a complete,
+> consistent multi-tool mock intelligence run (search + fare + delay + details, legs on the card);
+> the full demo (including steps 11–12) completes across A8–A9 + Workstreams B/C.

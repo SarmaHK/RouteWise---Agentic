@@ -115,43 +115,51 @@ A2 Travel Request Understanding   ✅ implemented
 A3 Agent Architecture             ✅ implemented / orchestration + decision
 A4 Agent Tool System              ✅ implemented / tool contract + registry + executor
 A5 Tool-Calling Orchestrator      ✅ implemented / bounded multi-step Qwen tool loop
-A6 Route Decision Engine          ← current / refined deterministic decision engine
-A7 Mock Intelligence Integration
+A6 Route Decision Engine          ✅ implemented / refined deterministic decision engine
+A7 Mock Intelligence Integration  ← current / four AVAILABLE mock tools + end-to-end agent proof
 A8 Agent Experience / UI
 A9 Final API & Agent State
 A10 Workstream B Handover
 ```
 
-**CURRENT PHASE: A6 — Route Decision Engine (decision refinement & constraint-aware route
-optimization).**
+**CURRENT PHASE: A7 — Mock Intelligence Integration (a complete deterministic mock intelligence
+environment, so the agent can demonstrate a realistic end-to-end workflow before Workstream B
+supplies real transit intelligence).**
 
-Do **not** auto-advance into A7 or any later phase. Wait for an explicit human instruction. A6
-**refines and strengthens** the A3 `DecisionEngine` (`backend/app/agent/decision.py`) — it does not
-replace the A3/A4/A5 architecture, and the public contract `decide(request, candidates) -> Decision`
-is unchanged (no orchestrator, tool, endpoint, or candidate-schema change was needed). The pipeline
-is explicit: candidate **preparation/sanitization** → **hard-constraint validation** → **feature
-normalization** → **preference-weighted scoring** → **deterministic ranking** → recommendation +
-alternatives + concise explanation.
+Do **not** auto-advance into A8 or any later phase. Wait for an explicit human instruction. A7
+**fills in the existing A4 tool seam** — it does not replace the A3/A4/A5/A6 architecture, adds no
+state, no transition, no endpoint and no response field.
 
-- **Hard constraints** (origin, destination, budget ceiling, arrival deadline, and an explicitly
-  `unavailable` service) are checked deterministically and **every** violation is reported as a
-  structured `ConstraintViolation` (`type` + grounded `message`) in a fixed precedence order — an
-  excluded candidate is never silently discarded.
-- **Soft preferences** (`walking_preference`, `luggage`) only re-rank candidates that already passed
-  the hard filter; they adjust fixed weights (never LLM-generated) which are renormalized to sum to 1.
-- **Delay** data is *consumed* when present (`delay_risk` plus a small, capped `delay_min_estimate`
-  penalty) but never *predicted* — that stays Workstream B, behind the same fields.
-- **Impossible values** (negative / `NaN` / infinite), malformed candidates and duplicate ids are
-  treated as **unknown** and recorded as assumptions — never silently accepted, never invented.
-- Each route card now carries the additive fields `rank` / `valid` / `strengths` /
-  `constraint_violations` (mirrored in `frontend/src/types/api.ts`), and `alternatives[]` is ordered
-  valid runners-up first, then clearly-marked exclusions.
+- **One shared source of mock route truth** lives in `backend/app/tools/intelligence.py`
+  (`MockRouteIntelligence`): seven routes across three corridors, each with route-level figures
+  **and** leg-level detail whose durations/fares/walking/delays *sum* to the route totals. It is the
+  single dataset behind `search_routes`, `get_fare_estimate`, `get_delay_prediction` and
+  `get_route_details`, so those four tools can never contradict each other about the same route.
+  `app/tools/candidates.py` is now a thin facade over it (the A3 fixtures were **moved**, not copied).
+- **Four tools are `AVAILABLE`** with `data_source=mock`: `search_routes` plus the three A7
+  intelligence tools. `check_availability` and `prepare_booking` stay honest `NOT_IMPLEMENTED`
+  Workstream-C stubs. The three new tools are ordinary `Tool` subclasses executed by the **existing**
+  `ToolExecutor` — no second executor, registry, result class or tool base class.
+- **Unknown routes fail honestly**: `ToolErrorCode.ROUTE_NOT_FOUND` with `success=false`,
+  `data=None`, `data_source=mock` and `details.known_route_ids`. Nothing is ever randomized or
+  invented for a route the dataset does not hold.
+- **The agent stays model-driven.** The real orchestrator hard-codes no tool sequence: it executes
+  whatever the planner returns and feeds every result — success or failure — back. Only the offline
+  `MockAgentPlanner` simulates the search → fare → delay → details → decide scenario, and it derives
+  each step from *observed evidence* (`PlannerContext.route_ids` / `called_tools`), so a registry
+  without a capability simply skips that step.
+- **Tool results are merged conservatively** (brief §17): each payload is filed under the `route_id`
+  it reports, the structured candidate stays **authoritative**, a genuinely missing figure is filled
+  in, and a contradiction is recorded as an explicit conflict instead of being resolved. The
+  recommended route's legs are attached to `PlanResponse.legs` (declared since A3, empty until now).
+- **A6 still decides.** The golden Colombo Fort → Ella demo resolves to **R1 (score 0.472)** with
+  alternatives **R2 (0.408)** and **R3 (excluded — over the LKR 2,000 budget)** — bit-for-bit the A6
+  result, because the mock intelligence agrees with the candidates it enriches.
 
-The engine remains **deterministic**: Qwen selects tools (A5) but never chooses the winner, and the
-golden Colombo Fort → Ella demo still resolves by reasoning over the data (heavy bag + minimize
-walking → R1; the same candidates with no preferences → R2). All route data is still **mock**. Do not
-start real Workstream B/C work (ML models, PostGIS, GTFS ingestion, browser automation, booking,
-Travel Pass generation) or A7+ logic — those are later phases.
+All route data is still **mock**: no XGBoost, no LSTM, no PostgreSQL/PostGIS, no GTFS or GTFS-RT, no
+external transit API, no browser automation, no booking, no Travel Pass. Workstream B later replaces
+the provider *behind* these exact tool signatures (`app/tools/intelligence.py` is the documented
+replacement point). Do not start real Workstream B/C work or A8+ logic — those are later phases.
 
 ---
 
@@ -173,13 +181,13 @@ RouteWise - Agentic/
 │   └── DEMO.md
 ├── frontend/              ← React + Vite + TS app (Workstream A UI + design tokens)
 │   ├── README.md
-│   ├── src/main.tsx · App.tsx                 ← app shell (request input → agent progress timeline → mock decision); A5 renders the multi-step tool trace; A6 renders the structured route comparison (strengths · trade-offs · constraint violations)
+│   ├── src/main.tsx · App.tsx                 ← app shell (request input → agent progress timeline → mock decision); A5 renders the multi-step tool trace; A6 renders the structured route comparison (strengths · trade-offs · constraint violations); A7 adds a ✓/✗ tool glyph + the recommended route's mock legs
 │   ├── src/services/api/                      ← the ONLY backend caller (client · health · routePlan)
-│   ├── src/config/env.ts · src/types/api.ts   ← runtime config + contract-mirroring types (A5: ToolCall.error_code · A6: Recommendation rank/valid/strengths/constraint_violations)
+│   ├── src/config/env.ts · src/types/api.ts   ← runtime config + contract-mirroring types (A5: ToolCall.error_code · A6: Recommendation rank/valid/strengths/constraint_violations · A7: Leg populated)
 │   └── src/styles/tokens.css · globals.css    ← CSS source of truth for the design system
-├── backend/               ← FastAPI (Workstream A agent + API) — A1 foundation + A2 understanding + A3 agent + A4 tools + A5 tool loop + A6 decision refinement
+├── backend/               ← FastAPI (Workstream A agent + API) — A1 foundation + A2 understanding + A3 agent + A4 tools + A5 tool loop + A6 decision refinement + A7 mock intelligence
 │   ├── README.md
-│   └── app/ (main · config · logging_config · api/ · schemas/ · agent/ · tools/ · services/ai/ incl. extraction + agent tool-calling planner) · tests/
+│   └── app/ (main · config · logging_config · api/ · schemas/ · agent/ · tools/ incl. intelligence.py shared mock route truth · services/ai/ incl. extraction + agent tool-calling planner) · tests/
 ├── data/                  ← mock/static data (shared; real GTFS is Workstream B)
 │   └── README.md
 ├── models/                ← ML artifacts (Workstream B — DO NOT implement yet)

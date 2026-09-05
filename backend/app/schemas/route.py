@@ -120,7 +120,7 @@ class ToolCall(BaseModel):
         description=(
             "Structured failure code when the call did not succeed (A5, additive): e.g. "
             "INVALID_INPUT | UNKNOWN_TOOL | NOT_IMPLEMENTED | TOOL_UNAVAILABLE | "
-            "EXECUTION_ERROR | TIMEOUT | MALFORMED_RESULT."
+            "EXECUTION_ERROR | TIMEOUT | MALFORMED_RESULT | ROUTE_NOT_FOUND (A7)."
         ),
     )
 
@@ -139,7 +139,13 @@ class AgentAction(BaseModel):
 
 
 class Leg(BaseModel):
-    """A single leg of a route (API_CONTRACTS §3). Foundation shape; populated from A6+."""
+    """A single leg of a route (API_CONTRACTS §3).
+
+    Foundation shape since A3; **A7 populates it** — ``PlanResponse.legs`` now carries the leg-by-leg
+    detail of the *recommended* route, taken verbatim from the mock ``get_route_details`` tool
+    result (A7 brief §9). The shape is unchanged, so Workstream B can later supply real legs with no
+    contract change.
+    """
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -234,6 +240,11 @@ class PlanResponse(BaseModel):
     A3 adds one additive field, ``reasoning`` (API_CONTRACTS §9 permits additive changes): the
     concise, observable explanation of the decision (the ReasoningSummary shown at COMPLETED,
     DESIGN_SYSTEM §12.9). It never exposes hidden chain-of-thought — only structured factors.
+
+    **A7 changes no field**: ``legs`` (declared since A3) is now populated with the recommended
+    route's leg detail from the mock ``get_route_details`` result, and ``agent_actions`` may contain
+    several tool calls (search + fare + delay + details) in a planner-selected order — all still
+    ``data_source=mock`` (A7 brief §20/§22).
     """
 
     status: AgentState

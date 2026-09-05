@@ -202,13 +202,21 @@ def test_non_object_arguments_normalize_to_empty_dict(bad: Any) -> None:
 
 
 # 8. Only AVAILABLE tools are exposed to the model, so a stub can never be called repeatedly (§6).
+# A7 (brief §12): the three new mock intelligence tools join the definitions automatically because
+# they are derived from ToolRegistry.list_available() — the list is never hard-coded here.
 def test_build_tool_definitions_exposes_only_available_tools() -> None:
     registry = build_tools(get_settings())
     definitions = build_tool_definitions(registry)
     names = {d["function"]["name"] for d in definitions}
-    # search_routes is the only AVAILABLE capability; the not_implemented stubs are excluded.
-    assert names == {"search_routes"}
-    assert registry.list_available() == ["search_routes"]
+    # The four AVAILABLE mock data tools are exposed; the Workstream-C stubs are excluded.
+    assert names == {
+        "search_routes",
+        "get_fare_estimate",
+        "get_delay_prediction",
+        "get_route_details",
+    }
+    assert names == set(registry.list_available())  # derived, never duplicated (§12)
+    assert "check_availability" not in names and "prepare_booking" not in names
 
     search = next(d for d in definitions if d["function"]["name"] == "search_routes")
     assert search["type"] == "function"
@@ -217,6 +225,11 @@ def test_build_tool_definitions_exposes_only_available_tools() -> None:
     assert params["type"] == "object"
     assert "origin" in params["properties"] and "destination" in params["properties"]
     assert {"origin", "destination"} <= set(params.get("required", []))
+
+    # A7: each intelligence tool advertises the route_id argument the model must supply.
+    fare = next(d for d in definitions if d["function"]["name"] == "get_fare_estimate")
+    assert "route_id" in fare["function"]["parameters"]["properties"]
+    assert "route_id" in fare["function"]["parameters"].get("required", [])
 
 
 # --------------------------------------------------------------------------- #

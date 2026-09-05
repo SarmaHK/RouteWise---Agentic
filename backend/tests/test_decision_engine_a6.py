@@ -719,6 +719,9 @@ def test_28_no_route_result_is_honest() -> None:
 # Integration (§18/§22) — brief §21, tests 29–30
 # --------------------------------------------------------------------------- #
 # 29. The A5 tool seam still feeds the A6 engine (no orchestrator/tool change was needed).
+# A7 (brief §16): the loop now also gathers fare/delay/details, yet the engine still decides from
+# the SAME candidate values — the richer intelligence is merged, not substituted, so the A6 outcome
+# (R1, rank 1, valid, its strengths and R3's BUDGET violation) is bit-for-bit unchanged.
 def test_29_a5_tool_output_feeds_the_a6_engine() -> None:
     settings = get_settings()
     result = build_tools(settings).call("search_routes", origin="Colombo Fort", destination="Ella")
@@ -731,10 +734,13 @@ def test_29_a5_tool_output_feeds_the_a6_engine() -> None:
     assert decision.recommendation.id == "R1"
     assert decision.data_source is DataSource.mock
 
-    # The same candidates flow through the A5 agent loop and the A6 fields survive untouched (§18).
+    # The same candidates flow through the A5/A7 agent loop and the A6 fields survive untouched.
     context = build_agent(settings).run(request)
     assert context.state is AgentState.COMPLETED
-    assert [a.state for a in context.actions] == [
+    # A7 (brief §20): the canonical state order is unchanged; only the number of SEARCHING tool
+    # calls grew, and no new state was introduced.
+    states = [a.state for a in context.actions]
+    assert list(dict.fromkeys(states)) == [
         AgentState.UNDERSTANDING,
         AgentState.PLANNING,
         AgentState.SEARCHING,
@@ -745,6 +751,11 @@ def test_29_a5_tool_output_feeds_the_a6_engine() -> None:
     assert recommendation.id == "R1"
     assert recommendation.valid is True and recommendation.rank == 1
     assert recommendation.strengths and recommendation.constraint_violations == []
+    # The engine's decision is identical to the direct call above (§16: A7 informs, A6 decides).
+    assert recommendation.score == decision.recommendation.score
+    assert [(c.id, c.total_fare_lkr, c.delay_risk) for c in context.candidates] == [
+        (c.id, c.total_fare_lkr, c.delay_risk) for c in result.data
+    ]
     invalid = [a for a in context.alternatives if a.valid is False]
     assert invalid and invalid[0].constraint_violations
 

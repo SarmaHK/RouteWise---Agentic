@@ -1,4 +1,4 @@
-"""Route agent orchestrator (Workstream A; A3 states, A4 tool seam, A5 multi-step loop).
+"""Route agent orchestrator (Workstream A; A3 states, A4 tools, A5 loop, A7 intelligence).
 
 :class:`RouteAgent` is the first real reasoning/orchestration layer. Given a validated
 :class:`~app.schemas.travel_request.TravelRequest` (A2 output) it drives the canonical state
@@ -14,10 +14,9 @@ Honesty guards (A3 brief §10/§17; AGENT_SPEC §15–§16):
 
 * If the request still needs clarification, the agent **stops before deciding** and stays in
   ``UNDERSTANDING`` (A3 brief §12) — no invented state, no fabricated route.
-* Every route figure comes from the mock candidate provider and is labelled ``data_source=mock``.
-* The agent never claims real seats/fares/availability; the fare/delay/availability/booking
-  tools are honest ``not_implemented`` stubs, gated by the A4 tool-availability model so they are
-  resolved but never called for data.
+* Every route figure comes from a tool result and is labelled ``data_source=mock``.
+* The agent never claims real seats/availability; the availability/booking capabilities remain
+  honest ``not_implemented`` stubs, gated by the A4 tool-availability model.
 
 **A4** routed the ``search_routes`` call through the tool seam (registry → executor → structured
 :class:`~app.tools.base.ToolResult`). **A5** generalizes that single call into a *bounded,
@@ -26,9 +25,18 @@ tool to call next (real Qwen when a key is configured, else a deterministic mock
 orchestrator validates → resolves → executes it through the A4 seam, records the action, feeds the
 structured result (success **or** failure) back, and repeats until the planner finishes or
 ``MAX_AGENT_ITERATIONS`` is reached (A5 brief §2/§7/§8). The tool *sequence* is model-selected, not
-hard-coded. The final recommendation is still computed by the deterministic
-:class:`~app.agent.decision.DecisionEngine` over tool-gathered candidates — the planner never
-invents route facts (A5 brief §15/§16). Mock mode is fully functional with no API key.
+hard-coded.
+
+**A7** adds no new state and no new loop — it only *widens what the loop can observe* (A7 brief
+§13/§17). Three more capabilities are now ``AVAILABLE`` mocks (fare, delay, route details), so a
+planner may gather several route-scoped results; this orchestrator files each successful one under
+its own ``route_id``, hands the planner the ids it has actually seen, and — before deciding —
+consolidates those observations against the structured candidates. The candidate stays
+authoritative: an observation that agrees changes nothing, one that fills a missing field enriches
+it, and one that contradicts it is recorded as an honest conflict instead of being silently
+resolved. The final recommendation is still computed by the deterministic
+:class:`~app.agent.decision.DecisionEngine`, which still never touches a mock dataset itself
+(A7 brief §3/§16). Mock mode is fully functional with no API key.
 """
 
 from __future__ import annotations
@@ -66,6 +74,29 @@ DEFAULT_MAX_AGENT_ITERATIONS = 8
 #: today, so this only matters once Workstream B/C supply real capabilities — no new agent states
 #: are introduced either way.
 _ACTION_TOOLS = frozenset({"prepare_booking"})
+
+#: A7: the route-scoped intelligence capabilities, mapped to the observation slot each one fills.
+#: Their successful payloads all carry ``route_id``, which is how results are associated per route
+#: (``R1 ├── fare ├── delay ├── details``) rather than merged blindly (A7 brief §17). The names are
+#: the canonical registry names — no tool list is duplicated here for *selection* purposes: the
+#: planner still discovers capabilities through the registry (A7 brief §12/§13).
+_INTEL_SLOTS: dict[str, str] = {
+    "get_fare_estimate": "fare",
+    "get_delay_prediction": "delay",
+    "get_route_details": "details",
+}
+
+#: Which :class:`~app.schemas.candidate.RouteCandidate` fields each observation slot may confirm or
+#: fill in. Anything not listed here is *reported* to the planner through the transcript but never
+#: written onto a candidate — the merge stays small, explicit and auditable.
+_INTEL_FIELDS: dict[str, tuple[str, ...]] = {
+    "fare": ("total_fare_lkr",),
+    "delay": ("delay_risk", "delay_min_estimate"),
+    "details": ("total_duration_min", "total_fare_lkr", "transfers", "walking_km"),
+}
+
+#: Numeric tolerance when checking an observation against the authoritative candidate value.
+_VALUE_TOLERANCE = 1e-6
 
 #: Argument keys never surfaced to the frontend action trace (A5 brief §10: sanitize args).
 _SENSITIVE_ARG_KEYS = frozenset(
@@ -166,6 +197,12 @@ class RouteAgent:
         steps_taken = 0
         iteration = 0
         limit_hit = False
+        # A7 evidence for the planner + the per-route result association used before deciding:
+        # ``called_tools``/``route_ids`` are *observed facts* (never guesses), and ``observations``
+        # files each successful route-scoped payload under the route id it reports (§14/§17).
+        called_tools: list[str] = []
+        route_ids: list[str] = []
+        observations: dict[str, dict[str, Any]] = {}
 
         while iteration < self._max_iterations:
             iteration += 1
@@ -175,6 +212,8 @@ class RouteAgent:
                 travel_request=snapshot,
                 tool_names=self._tools.names(),
                 steps_taken=steps_taken,
+                called_tools=called_tools,
+                route_ids=route_ids,
             )
             decision = self._planner.next_decision(ctx)
             if not decision.is_tool_call:
@@ -215,10 +254,16 @@ class RouteAgent:
                     context.advance(target_state)  # SEARCHING (gather) or EXECUTING (act) — §9
                 result = self._tools.execute(call.name, call.arguments)
                 steps_taken += 1
+                # A7: remember that this capability ran (success or failure) so the planner never
+                # asks for the same thing again, and file what it actually returned.
+                called_tools.append(call.name)
                 if result.success and call.name == "search_routes":
                     # Ground the eventual decision in the structured candidates the tool actually
                     # returned (§15/§16) — the planner never invents these facts.
                     context.candidates = list(result.data or [])
+                    route_ids = [candidate.id for candidate in context.candidates]
+                elif result.success and call.name in _INTEL_SLOTS:
+                    self._observe(observations, call.name, result)
                 if not result.success:
                     context.errors.append(result.message)
                 self._record_tool_action(context, call, result)
@@ -230,7 +275,10 @@ class RouteAgent:
             # the observed actions and fabricating nothing.
             limit_hit = True
 
-        self._finalize(context, request, limit_hit)
+        # A7 §17: associate the per-route tool results with the authoritative candidates *before*
+        # the A6 engine decides, and report any contradiction honestly instead of resolving it.
+        intel_summary = self._merge_intelligence(context, observations)
+        self._finalize(context, request, limit_hit, observations, intel_summary)
         return context
 
     # ------------------------------------------------------------------ #
@@ -241,6 +289,8 @@ class RouteAgent:
         context: AgentExecutionContext,
         request: TravelRequest,
         limit_hit: bool,
+        observations: Optional[dict[str, dict[str, Any]]] = None,
+        intel_summary: str = "",
     ) -> None:
         """Evaluate the gathered candidates and advance to COMPLETED (A5 §8/§15/§16).
 
@@ -248,6 +298,10 @@ class RouteAgent:
         candidates the tools actually returned — the planner only *selected* tools, it never
         invents route facts. If the iteration budget was exhausted, we stop honestly with **no**
         recommendation rather than fabricate one (§8).
+
+        A7 adds two things here, both purely presentational/associative: the recommended route's
+        leg detail (only if ``get_route_details`` actually returned it) and the intelligence
+        consolidation summary in the EVALUATING action. Neither changes *how* the engine decides.
         """
         context.advance(AgentState.EVALUATING)
         if limit_hit:
@@ -273,10 +327,11 @@ class RouteAgent:
         else:
             decision = self._engine.decide(request, context.candidates)
             self._apply_decision(context, decision)
+            self._apply_legs(context, decision, observations or {})
             context.record_action(
                 state=AgentState.EVALUATING,
                 label=self._evaluating_label(decision, len(context.candidates)),
-                detail=self._evaluating_detail(decision),
+                detail=self._evaluating_detail(decision, intel_summary),
                 data_source=DataSource.mock,
             )
             completed_label = (
@@ -293,6 +348,127 @@ class RouteAgent:
             detail=completed_detail,
             data_source=DataSource.mock,
         )
+
+    # ------------------------------------------------------------------ #
+    # A7: per-route tool-result association + consistency check (brief §17)
+    # ------------------------------------------------------------------ #
+    @staticmethod
+    def _observe(
+        observations: dict[str, dict[str, Any]], tool_name: str, result: ToolResult
+    ) -> None:
+        """File one successful route-scoped result under the ``route_id`` it reports.
+
+        A payload with no usable ``route_id`` is **not** merged anywhere: guessing which route it
+        belongs to would be inventing an association (A7 brief §17).
+        """
+        data = result.data if isinstance(result.data, dict) else {}
+        route_id = data.get("route_id")
+        if not isinstance(route_id, str) or not route_id.strip():
+            return
+        slot = _INTEL_SLOTS.get(tool_name)
+        if slot is None:  # defensive: only route-scoped intelligence is filed
+            return
+        observations.setdefault(route_id.strip(), {})[slot] = data
+
+    def _merge_intelligence(
+        self,
+        context: AgentExecutionContext,
+        observations: dict[str, dict[str, Any]],
+    ) -> str:
+        """Associate observed intelligence with the candidates; keep the candidate authoritative.
+
+        Policy (A7 brief §17) — deliberately conservative:
+
+        * an observation that **agrees** with the candidate changes nothing (the shared mock truth
+          makes this the normal case, and the check is what proves it);
+        * an observation that **fills** a field the candidate does not carry enriches the candidate,
+          so the A6 engine can use the richer information (A7 brief §16);
+        * an observation that **contradicts** the candidate is recorded as an explicit conflict and
+          the structured candidate value is kept — no resolution is ever invented;
+        * an observation about a route id that ``search_routes`` never returned is reported and
+          ignored, because there is no candidate to attach it to.
+
+        Returns a one-line summary for the EVALUATING action ("" when nothing was observed).
+        """
+        if not observations:
+            return ""
+        by_id = {candidate.id: candidate for candidate in context.candidates}
+        conflicts: list[str] = []
+        enriched = 0
+        associated = 0
+
+        for route_id in sorted(observations):
+            candidate = by_id.get(route_id)
+            if candidate is None:
+                conflicts.append(
+                    f"'{route_id}' intelligence was observed but search_routes returned no "
+                    "candidate with that id, so it was not merged into the decision."
+                )
+                continue
+            associated += 1
+            for slot in sorted(observations[route_id]):
+                payload = observations[route_id][slot]
+                for field_name in _INTEL_FIELDS.get(slot, ()):
+                    observed = payload.get(field_name)
+                    if observed is None:
+                        continue
+                    current = getattr(candidate, field_name, None)
+                    if current is None:
+                        # Only a genuinely missing figure is filled in; nothing is overwritten.
+                        setattr(candidate, field_name, observed)
+                        enriched += 1
+                    elif not self._same_value(current, observed):
+                        conflicts.append(
+                            f"{route_id}.{field_name}: the search_routes candidate says "
+                            f"{current!r} but the {slot} tool says {observed!r}; the structured "
+                            "candidate value was kept (no resolution invented)."
+                        )
+
+        for message in conflicts:
+            context.errors.append(message)
+
+        slots = sorted({slot for seen in observations.values() for slot in seen})
+        summary = (
+            f"Consolidated mock intelligence for {associated} route(s) "
+            f"({', '.join(slots) if slots else 'no slots'})"
+        )
+        if enriched:
+            summary += f"; {enriched} missing candidate field(s) filled from tool results"
+        summary += (
+            f"; {len(conflicts)} conflict(s) recorded honestly, candidate values kept"
+            if conflicts
+            else "; consistent with the structured candidates"
+        )
+        return summary + "."
+
+    @staticmethod
+    def _same_value(current: Any, observed: Any) -> bool:
+        """Compare a candidate value with an observed one (numbers within a small tolerance)."""
+        if isinstance(current, bool) or isinstance(observed, bool):
+            return current == observed
+        if isinstance(current, (int, float)) and isinstance(observed, (int, float)):
+            return abs(float(current) - float(observed)) <= _VALUE_TOLERANCE
+        return current == observed
+
+    @staticmethod
+    def _apply_legs(
+        context: AgentExecutionContext,
+        decision: Decision,
+        observations: dict[str, dict[str, Any]],
+    ) -> None:
+        """Attach the recommended route's legs — only if a details tool actually returned them.
+
+        ``context.legs`` was defined in A3 and stayed empty until a route-details capability existed
+        (A7 brief §9). It is filled from the tool result for the route the A6 engine recommended and
+        from nothing else, so the API never shows legs for an unchosen route and never shows
+        invented legs when the capability was not called, was unavailable, or failed.
+        """
+        if decision.recommendation is None:
+            return
+        details = observations.get(decision.recommendation.id, {}).get("details") or {}
+        legs = details.get("legs") or []
+        if legs:
+            context.legs = list(legs)
 
     def _record_tool_action(
         self,
@@ -427,8 +603,10 @@ class RouteAgent:
         return f"Evaluated {candidate_count} candidate route(s) — none viable"
 
     @staticmethod
-    def _evaluating_detail(decision: Decision) -> str:
+    def _evaluating_detail(decision: Decision, intel_summary: str = "") -> str:
         parts: list[str] = []
+        if intel_summary:
+            parts.append(intel_summary)
         if decision.scored:
             ranked = ", ".join(
                 f"{sc.candidate.id}={sc.score:.3f}" for sc in decision.scored

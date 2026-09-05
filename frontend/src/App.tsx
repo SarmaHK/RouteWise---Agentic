@@ -9,13 +9,28 @@
  * through the canonical states, then shows the MOCK recommendation, its concise decision reasons,
  * and alternatives — or the clarification when a hard constraint is missing. It deliberately does
  * NOT build the production dashboard, live maps, booking, monitoring, or Travel Pass (A3 brief §14).
+ *
+ * **A7 — mock intelligence (brief §22, deliberately minimal).** The agent now gathers fare,
+ * delay and leg-by-leg detail from four AVAILABLE mock tools, so two things changed here and
+ * nothing else: the tool line in the agent timeline carries a plain ✓/✗ outcome glyph (the
+ * multi-step trace is now several calls long, so it has to read at a glance), and the
+ * recommendation card renders the recommended route's `legs` — a field the API contract has
+ * declared since A3 and that A7 finally populates. Both reuse existing classes
+ * (`agent-timeline__tool`, `route-card__reasons`, `route-card__subtitle`, `reasons-list`,
+ * `rw-mono`), so no new CSS, no new tokens, no dashboard, no map, no booking UI.
  */
 
 import { useCallback, useEffect, useState } from 'react';
 
 import { env } from './config/env';
 import { ApiError, getHealth, planRoute } from './services/api';
-import type { HealthResponse, PlanResponse, Recommendation, TravelRequest } from './types/api';
+import type {
+  HealthResponse,
+  Leg,
+  PlanResponse,
+  Recommendation,
+  TravelRequest,
+} from './types/api';
 import './App.css';
 
 type Status = 'idle' | 'loading' | 'success' | 'error';
@@ -100,6 +115,27 @@ function reasonsFor(rec: Recommendation): string[] {
   return rec.rationale ? [rec.rationale] : [];
 }
 
+/** One mock leg as a single honest line (A7 §22) — only figures the leg actually carries. */
+function legLine(leg: Leg): string {
+  const parts: string[] = [`${leg.from} → ${leg.to}`];
+  if (leg.duration_min != null) parts.push(formatMinutes(leg.duration_min));
+  if (leg.fare_lkr != null && leg.fare_lkr > 0) parts.push(formatLkr(leg.fare_lkr));
+  if (leg.walking_km != null && leg.walking_km > 0) parts.push(`${formatKm(leg.walking_km)} walk`);
+  if (leg.delay_risk && leg.delay_risk !== 'none') parts.push(`${leg.delay_risk} delay risk`);
+  return parts.join(' · ');
+}
+
+/**
+ * A one-glyph outcome marker for a tool call (A7 §22). Honest and derived only from the status
+ * the backend already reports: ✓ for a succeeded call, ✗ for a failed one, nothing otherwise —
+ * a pending call is never marked as if it had worked.
+ */
+function toolGlyph(status?: string | null): string {
+  if (status === 'done') return '✓ ';
+  if (status === 'error') return '✗ ';
+  return '';
+}
+
 export default function App() {
   const [health, setHealth] = useState<HealthState>({ status: 'loading' });
   const [plan, setPlan] = useState<PlanState>({ status: 'idle' });
@@ -148,6 +184,8 @@ export default function App() {
   const alternatives = data?.alternatives ?? [];
   const actions = data?.agent_actions ?? [];
   const reasoning = data?.reasoning ?? null;
+  // A7 (brief §22): legs of the RECOMMENDED route, from the mock get_route_details result.
+  const legs = data?.legs ?? [];
 
   const rows: { label: string; value: string | null }[] = request
     ? [
@@ -372,7 +410,8 @@ export default function App() {
                         )}
                         {action.tool_call && (
                           <p className="agent-timeline__tool">
-                            tool <span className="rw-mono">{action.tool_call.name}</span>
+                            {toolGlyph(action.tool_call.status)}tool{' '}
+                            <span className="rw-mono">{action.tool_call.name}</span>
                             {/* A4 (brief §17): show tool status + source safely; tokens only, no new UI. */}
                             {action.tool_call.availability && (
                               <span className="tag">{action.tool_call.availability}</span>
@@ -428,8 +467,26 @@ export default function App() {
                     </div>
                   )}
 
+                  {/* A7 (brief §22): leg-by-leg detail from the mock get_route_details tool.
+                      Rendered only for the recommended route, only when the backend sent legs. */}
+                  {legs.length > 0 && (
+                    <div className="route-card__reasons">
+                      <h4 className="route-card__subtitle">
+                        Legs ({legs.length}) — mock route details
+                      </h4>
+                      <ul className="reasons-list">
+                        {legs.map((leg) => (
+                          <li key={leg.id}>
+                            <span className="rw-mono">{leg.mode}</span> {legLine(leg)}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
                   <p className="route-card__mock panel__meta">
-                    Illustrative MOCK data (Phase A3) — not a live train/bus, fare, seat, or booking.
+                    Illustrative MOCK data (Phase A3 candidates, Phase A7 mock intelligence) — not a
+                    live train/bus, fare, delay, seat, or booking.
                   </p>
                 </article>
               )}

@@ -79,7 +79,10 @@ decision engine, the stable public API, and the agent-activity experience.
 - **On C:** availability, booking preparation, disruption signals, Travel Pass delivery (via
   tools).
 - **On Qwen/Model Studio:** reasoning (Alibaba Cloud).
-- All are **mocked** by A until B/C deliver, so A is never blocked.
+- All are **mocked** by A until B/C deliver, so A is never blocked. **Since A7** the four B-facing
+  data tools (`search_routes`, `get_fare_estimate`, `get_delay_prediction`, `get_route_details`) are
+  `AVAILABLE` on **one shared deterministic mock dataset**; the two C-facing tools are still honest
+  `NOT_IMPLEMENTED` stubs.
 
 ### Integration points
 - Frontend ⇄ A: `POST /api/route/plan` (+ optional agent status/stream).
@@ -89,22 +92,30 @@ decision engine, the stable public API, and the agent-activity experience.
 ### Deliverables
 - Working agent (understand → plan → call tools → score → decide → explain → re-plan).
 - Public API + schemas mirroring the contracts.
-- Mock tool layer (replaceable by B/C).
+- Mock tool layer (replaceable by B/C). **A7 made the replacement point concrete:**
+  `backend/app/tools/intelligence.py` — B swaps that module's data source, keeps the accessors and the
+  four tool signatures, and nothing above the tool layer changes.
 - Agent-activity UI (states, steps, reasoning summary).
 
 ### Definition of Done (A)
 - The **golden demo** ([`DEMO.md`](DEMO.md)) runs end-to-end on mocks: request understood,
   constraints extracted, routes evaluated, budget/luggage/walking respected, decision explained,
   alternatives shown, a disruption triggers re-planning.
+  **A7 status:** everything except the disruption/re-planning leg is demonstrated end-to-end over a
+  multi-tool mock run (search → fare → delay → details → decision → legs). Re-planning needs C's
+  disruption signal (A8+).
 - All 9 states render correctly in the UI; `status` matches the contract.
 - Deterministic on fixed mock data; honest `data_source` labeling; no hallucinated values.
+  **A7:** the shared mock dataset has no randomness and is internally consistent (leg figures sum to
+  route totals), so the golden run reproduces exactly.
 - API contracts stable + documented; mocks behind exact B/C signatures; tests pass.
 
 ### Phases (A)
 `A1 Foundation → A2 Travel Request Understanding → A3 Agent Architecture → A4 Agent Tool System
 → A5 Tool-Calling Orchestrator → A6 Route Decision Engine → A7 Mock Intelligence Integration →
 A8 Agent Experience/UI → A9 Final API & Agent State → A10 Workstream B Handover.`
-**Current: A6 (Route Decision Engine) — A1–A6 are implemented.** Do not auto-advance into A7.
+**Current: A7 (Mock Intelligence Integration & End-to-End Agent Validation) — A1–A7 are
+implemented.** Do not auto-advance into A8.
 
 ---
 
@@ -141,7 +152,8 @@ consume through tools.
 - **On C (future):** real-time disruption/availability signals to refine predictions.
 
 ### Integration points
-- B ⇄ A: implements A's transit tool interfaces (drop-in replacement for A's mocks).
+- B ⇄ A: implements A's transit tool interfaces (drop-in replacement for A's mocks — **since A7 the
+  single file to replace is `backend/app/tools/intelligence.py`**, behind unchanged tool signatures).
 - B ⇄ C: provides delay/route intelligence that feeds C's rerouting/monitoring.
 - B ⇄ DB: PostgreSQL/PostGIS.
 
@@ -227,7 +239,11 @@ Only **real** dependencies are listed. Each exchange happens through a documente
 - The **transit tool interface contracts** (`search_routes`, `get_fare_estimate`,
   `get_delay_prediction`, `get_route_details`) — signatures, args, expected result shapes,
   `data_source`/confidence fields.
-- **Mock implementations** of those tools (so B has a working reference + test harness).
+- **Mock implementations** of those tools (so B has a working reference + test harness). **A7
+  delivered the real reference:** all four are `AVAILABLE` on one shared deterministic dataset
+  (`backend/app/tools/intelligence.py` — 7 routes / 3 corridors, route totals **and** consistent leg
+  detail), each returning `{ success, tool_name, data_source: mock, data | error{code,message} }` and a
+  structured `ROUTE_NOT_FOUND` for an unknown id. B replaces the data source, not the contract.
 - The **query shapes** the agent needs (origin/destination/time/preferences; route/leg ids).
 - **Handover (A10):** contracts + mocks + example agent calls for B to replace.
 
@@ -241,7 +257,9 @@ Only **real** dependencies are listed. Each exchange happens through a documente
   signatures, args, result shapes, and the **confirmation gate** rules.
 - The **replanning hook**: how a disruption signal from C triggers A's `REPLANNING`.
 - The **Travel Pass data/visual contract** (what data the pass needs; how it's styled).
-- **Mock implementations** of the execution tools (so C has a reference + test harness).
+- **Mock implementations** of the execution tools (so C has a reference + test harness). **A7
+  deliberately left these as honest `NOT_IMPLEMENTED` stubs** — the contracts and the executor's
+  availability gate are in place, but no simulated availability/booking behavior was built.
 
 ### What C provides to A
 - **Availability status** and **prepared (unconfirmed) bookings** behind A's signatures.

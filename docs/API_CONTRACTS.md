@@ -28,8 +28,8 @@ used throughout, so no reader mistakes a plan for a built feature:
 | Route / leg / recommendation shapes (§3) | CURRENT (mock) | A → B (real data) |
 | `agent_actions[]` shape (§4) | CURRENT (A4 `availability`/`data_source`; **A5 `error_code`** — all additive) | A |
 | Error envelope (§5) | CURRENT | A |
-| `search_routes`, `get_fare_estimate`, `get_delay_prediction`, `get_route_details` (§6) | CURRENT signature / FUTURE impl | B |
-| `check_availability`, `prepare_booking` (§6) | CURRENT signature / FUTURE impl | C |
+| `search_routes`, `get_fare_estimate`, `get_delay_prediction`, `get_route_details` (§6) | CURRENT signature + **CURRENT mock impl (A7, `data_source: mock`)** / FUTURE real impl | A mocks → B implements |
+| `check_availability`, `prepare_booking` (§6) | CURRENT signature / FUTURE impl (still honest `NOT_IMPLEMENTED` stubs after **A7**) | C |
 | Delivery mechanism: single response vs SSE/WebSocket (§4) | CURRENT (single response — **A5** runs the whole loop in-request, no streaming); SSE/WebSocket FUTURE | A — streaming decided A8/A9 |
 | `GET /api/agent/status`, `GET /api/agent/stream` (§7) | FUTURE (reserved) | A — decided A8/A9 |
 | Live GTFS/GTFS-RT, PostGIS, real ML, real booking, cloud deploy | FUTURE | B / C |
@@ -79,8 +79,14 @@ Submit a travel request; receive the agent's plan/recommendation.
   A4 seam and feeds the structured result back), so `agent_actions[]` may contain **multiple**
   model-selected tool calls. The loop completes **inside the request** (no SSE/WebSocket, §4) and
   stops safely at `MAX_AGENT_ITERATIONS` (default 8) — on the limit it returns `status: COMPLETED`
-  with `recommendation: null` and an honest `reasoning`, never a fabricated pick. Real transit
-  search / ML scoring remains FUTURE (Workstream B, surfaced in A9).
+  with `recommendation: null` and an honest `reasoning`, never a fabricated pick. **A7 fills the
+  loop with real mock intelligence** (still no contract change): `get_fare_estimate`,
+  `get_delay_prediction` and `get_route_details` are now `AVAILABLE` alongside `search_routes`, so
+  one request produces a **multi-step trace** (search → fare/delay/details per candidate) and
+  `legs` is populated for the recommended route. All four read one shared deterministic mock
+  dataset (`data_source: mock`); an unknown route id is a structured `ROUTE_NOT_FOUND` failure,
+  never invented data. The **A6 decision engine still makes the choice** — A7 only informs it.
+  Real transit search / ML scoring remains FUTURE (Workstream B, surfaced in A9).
 
 #### Request (conceptual)
 
@@ -140,7 +146,7 @@ Submit a travel request; receive the agent's plan/recommendation.
 | `status` | enum | One of the canonical **Agent states** ([`AGENT_SPEC.md` §5](AGENT_SPEC.md)): `IDLE, UNDERSTANDING, PLANNING, SEARCHING, EVALUATING, EXECUTING, REPLANNING, COMPLETED, ERROR`. **A3 returns `COMPLETED`** with a mock decision, or **`UNDERSTANDING`** when clarification is required (the agent stops before deciding); live-data planning matures in A9. |
 | `request` | object | The **normalized/extracted** `TravelRequest` (§2.1) the agent understood: origin, destination, hard constraints, soft preferences, and any **missing info**/clarification it detected. Lets the UI echo constraints back. |
 | `recommendation` | object | The chosen route + rationale. See §3. |
-| `legs` | array | Ordered legs of the recommended route. See §3. |
+| `legs` | array | Ordered legs of the recommended route. See §3. **Populated from A7** (`get_route_details` mock intelligence); empty before that. |
 | `alternatives` | array | Other candidate routes with trade-offs (same shape as recommendation). |
 | `agent_actions` | array | Ordered log of what the agent did: states entered, tools called, results summary, decisions. Drives the Agent activity UI. See §4. |
 | `reasoning` | string? | **Added in A3** (additive, §9). A concise, observable explanation of the decision or clarification (feeds `ReasoningSummary`, [`DESIGN_SYSTEM.md` §12.9](DESIGN_SYSTEM.md)). Never hidden chain-of-thought. |
@@ -294,6 +300,7 @@ structured):
 | `strengths` | string[] | **A6 (additive):** the grounded ✓ factors for route comparison (within budget / least walking / fastest / cheapest / fewest transfers / low delay risk), max 4; empty on an excluded card. |
 | `constraint_violations` | object[] | **A6 (additive):** structured hard-constraint failures — `{ type, message }` where `type` ∈ `ORIGIN \| DESTINATION \| BUDGET \| ARRIVAL_DEADLINE \| AVAILABILITY` and `message` is a concise grounded explanation. Ordered by fixed precedence; empty when `valid` is `true`. |
 | `data_source` | enum | `mock` \| `simulated` \| `live`. **Honesty flag** — MVP is `mock`/`simulated`. |
+| `legs[]` provenance (**A7**) | array | Legs come from the **same shared mock dataset** as the candidate totals, so `Σ leg.duration_min == total_duration_min`, `Σ leg.fare_lkr == total_fare_lkr`, `Σ leg.walking_km == total_walking_km` and `(#vehicle legs − 1) == transfers`. The recommended route's **candidate object stays authoritative**; a leg-level contradiction is reported, not silently applied. Real leg data (GTFS) is FUTURE / Workstream B. |
 
 ---
 
@@ -325,7 +332,7 @@ An ordered log the frontend renders via `AgentActivity`/`AgentStep`.
 | `seq` | number | Order in the timeline. |
 | `state` | enum | Canonical Agent state. |
 | `label` / `detail` | string | Human-facing text. |
-| `tool_call` | object? | Present when this step called a tool (§6). `status`: `pending\|running\|done\|error`. **A4 (additive):** `availability` (`available\|not_implemented\|disabled\|error`) and `data_source` (`mock\|simulated\|live`) — both optional, so the A3 shape is unchanged. **A5 (additive):** `error_code` (string?, e.g. `INVALID_INPUT` / `UNKNOWN_TOOL` / `NOT_IMPLEMENTED` / `REPEATED_CALL`) — present only when a call failed or was suppressed, so the A4 shape is unchanged; `args` are **sanitized** (secret-like keys redacted, over-long strings truncated) and never expose chain-of-thought. |
+| `tool_call` | object? | Present when this step called a tool (§6). `status`: `pending\|running\|done\|error`. **A4 (additive):** `availability` (`available\|not_implemented\|disabled\|error`) and `data_source` (`mock\|simulated\|live`) — both optional, so the A3 shape is unchanged. **A5 (additive):** `error_code` (string?, e.g. `INVALID_INPUT` / `UNKNOWN_TOOL` / `NOT_IMPLEMENTED` / `REPEATED_CALL` / **`ROUTE_NOT_FOUND` (A7)**) — present only when a call failed or was suppressed, so the A4 shape is unchanged; `args` are **sanitized** (secret-like keys redacted, over-long strings truncated) and never expose chain-of-thought. **A7** adds no field here — it only means one trace can now carry several `mock` data-tool calls (search + fare + delay + details). |
 | `status` | enum | Step status: `pending \| active \| done \| error`. |
 | `timestamp` | string (ISO 8601) | When it happened. |
 
@@ -370,20 +377,21 @@ All errors return a consistent body plus an appropriate HTTP status.
 
 ---
 
-## 6. Future tool interfaces (contracts / mocks only)
+## 6. Tool interfaces (contracts + A7 mock implementations)
 
-These are the tools the agent may call. **At this stage they are interfaces/mock contracts.**
-Workstream A defines and mocks them; Workstream B/C implement the real versions later behind
-the **same signatures**. Do **not** implement real B/C functionality now.
+These are the tools the agent may call. **The signatures are contracts; the A-phase
+implementations are deterministic mocks.** Workstream A defines and mocks them; Workstream B/C
+implement the real versions later behind the **same signatures**. Do **not** implement real B/C
+functionality now.
 
-| Tool | Signature (conceptual) | Returns (conceptual) | Future owner |
-|------|------------------------|----------------------|--------------|
-| `search_routes` | `search_routes(origin, destination, departure_time?, preferences?)` | List of candidate routes (id, modes, legs, rough fare/duration). | B |
-| `get_fare_estimate` | `get_fare_estimate(route_id \| legs, currency="LKR")` | Estimated fare(s) + confidence; `data_source`. | B (XGBoost) |
-| `get_delay_prediction` | `get_delay_prediction(route_id \| leg_id, at_time?)` | Delay risk level + estimated minutes; `data_source`. | B (LSTM) |
-| `get_route_details` | `get_route_details(route_id)` | Full leg-by-leg detail, times, transfer points, walking segments. | B |
-| `check_availability` | `check_availability(route_id \| leg_id, departure_time?)` | Availability status (available/limited/unavailable) — **simulated**. | C |
-| `prepare_booking` | `prepare_booking(route_id, traveler_info)` | A **prepared, unconfirmed** booking/hold + refs; **never auto-confirms** without explicit user confirmation. | C |
+| Tool | Signature (conceptual) | Returns (conceptual) | A7 status | Future owner |
+|------|------------------------|----------------------|-----------|--------------|
+| `search_routes` | `search_routes(origin, destination, departure_time?, preferences?)` | List of candidate routes (id, modes, legs, rough fare/duration). | `AVAILABLE` — mock | B |
+| `get_fare_estimate` | `get_fare_estimate(route_id \| legs, currency="LKR")` | Estimated fare(s) + confidence; `data_source`. | `AVAILABLE` — mock (**A7**) | B (XGBoost) |
+| `get_delay_prediction` | `get_delay_prediction(route_id \| leg_id, at_time?)` | Delay risk level + estimated minutes; `data_source`. | `AVAILABLE` — mock (**A7**) | B (LSTM) |
+| `get_route_details` | `get_route_details(route_id)` | Full leg-by-leg detail, times, transfer points, walking segments. | `AVAILABLE` — mock (**A7**) | B |
+| `check_availability` | `check_availability(route_id \| leg_id, departure_time?)` | Availability status (available/limited/unavailable) — **simulated**. | `NOT_IMPLEMENTED` (honest stub) | C |
+| `prepare_booking` | `prepare_booking(route_id, traveler_info)` | A **prepared, unconfirmed** booking/hold + refs; **never auto-confirms** without explicit user confirmation. | `NOT_IMPLEMENTED` (honest stub) | C |
 
 **Tool contract rules:**
 
@@ -400,17 +408,28 @@ the **same signatures**. Do **not** implement real B/C functionality now.
   signature or the agent code that calls them.
 
 > **A4 — Tool System & Capability Execution is implemented.** The contract above is now backed by a
-> real tool seam in `backend/app/tools/`: `search_routes` is `AVAILABLE` (deterministic **mock**
-> data); `get_fare_estimate`, `get_delay_prediction`, `get_route_details`, `check_availability`, and
-> `prepare_booking` are honest **`NOT_IMPLEMENTED`** stubs (real versions arrive with B/C — **A7**).
-> The multi-step Qwen tool-calling orchestrator is **A5**.
+> real tool seam in `backend/app/tools/`.
+>
+> **A7 — Mock Intelligence Integration is implemented.** `search_routes`, `get_fare_estimate`,
+> `get_delay_prediction` and `get_route_details` are all `AVAILABLE` on **deterministic mock** data
+> (`data_source=mock`, `status=mock_data`). All four read **one shared source of mock route truth**
+> (`backend/app/tools/intelligence.py` — `MockRouteIntelligence`: 7 routes across 3 corridors,
+> route-level figures *and* leg detail that sums to those figures), so the tools can never disagree
+> about the same route. That module is the **Workstream-B replacement point**: B supplies real data
+> behind the same accessors and the same tool signatures, and nothing above the tool layer changes.
+> `check_availability` and `prepare_booking` remain honest **`NOT_IMPLEMENTED`** stubs (Workstream C).
+> The multi-step Qwen tool-calling orchestrator is **A5**; A7 gives it more than one tool to choose
+> from, and the **sequence stays model-driven** (never hard-coded in the real agent).
 >
 > **Structured result (A4):** every tool call returns
 > `{ success, tool_name, data_source, data, error{code,message} | null }` (plus `status` / `message`
 > for the trace). **Availability (A4):** `AVAILABLE` / `NOT_IMPLEMENTED` / `DISABLED` / `ERROR` —
 > "the tool exists" is separate from "it can return data"; provenance stays on `data_source`. Error
 > codes: `INVALID_INPUT`, `UNKNOWN_TOOL`, `DUPLICATE_TOOL`, `NOT_IMPLEMENTED`, `TOOL_UNAVAILABLE`,
-> `EXECUTION_ERROR`, `TIMEOUT`, `MALFORMED_RESULT`. See [`AGENT_SPEC.md` §7](AGENT_SPEC.md).
+> `EXECUTION_ERROR`, `TIMEOUT`, `MALFORMED_RESULT`, and **`ROUTE_NOT_FOUND` (A7)** — returned with
+> `success=false` and `data_source=mock` when a route id is not in the mock dataset (e.g. `R999`),
+> so an unknown route is **never** answered with fabricated data. See
+> [`AGENT_SPEC.md` §7](AGENT_SPEC.md).
 
 ---
 
@@ -484,19 +503,22 @@ Backend / FastAPI — Workstream A
 AI Agent (Qwen) — Workstream A
    |  calls tools (§6) via stable signatures       <- CURRENT signatures
    |---------------> Transit / ML tools (B): search_routes, get_fare_estimate,
-   |                 get_delay_prediction, get_route_details   <- FUTURE real impl
+   |                 get_delay_prediction, get_route_details
+   |                 <- A7: AVAILABLE on ONE shared deterministic MOCK dataset
+   |                    (tools/intelligence.py = the Workstream-B replacement point)
+   |                    FUTURE: real GTFS/GTFS-RT + XGBoost/LSTM behind the same signatures
    |---------------> Execution / Cloud tools (C): check_availability, prepare_booking
-                     <- FUTURE real impl (never auto-commits)
+                     <- FUTURE real impl (still NOT_IMPLEMENTED stubs; never auto-commits)
 ```
 
 | From → To | Channel / contract | Status |
 |-----------|--------------------|--------|
 | Frontend → Backend | `POST /api/route/plan` (§2) | CURRENT (mock) |
-| Backend → Frontend | plan response: `recommendation` / `legs` / `alternatives` / `agent_actions` / `reasoning` (§2–4) | CURRENT (mock — A3 decision) |
+| Backend → Frontend | plan response: `recommendation` / `legs` / `alternatives` / `agent_actions` / `reasoning` (§2–4) | CURRENT (mock — A6 decision, **A7 legs + multi-step trace**) |
 | Backend → Frontend (live) | `GET /api/agent/status` · `GET /api/agent/stream` (§7) | FUTURE (reserved) |
-| Agent → B tools | `search_routes`, `get_fare_estimate`, `get_delay_prediction`, `get_route_details` (§6) | CURRENT signature / FUTURE impl |
+| Agent → B tools | `search_routes`, `get_fare_estimate`, `get_delay_prediction`, `get_route_details` (§6) | CURRENT signature + **CURRENT mock impl (A7)** / FUTURE real impl |
 | Agent → C tools | `check_availability`, `prepare_booking` (§6) | CURRENT signature / FUTURE impl |
-| B → Agent | structured route / fare / delay data + `data_source` | FUTURE |
+| B → Agent | structured route / fare / delay data + `data_source` | CURRENT as **mock** (A7); FUTURE as live |
 | C → Agent | availability status / prepared (unconfirmed) booking + `data_source` | FUTURE |
 | C → Agent (disruption) | disruption signal that triggers REPLANNING ([`AGENT_SPEC.md` §12](AGENT_SPEC.md)) | FUTURE |
 

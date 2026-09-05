@@ -17,6 +17,11 @@ State discipline (AGENT_SPEC §5 — "do not invent new ones"):
   and then acts (A5 brief §9's illustrative ``SEARCHING → EXECUTING → SEARCHING`` flow), so those
   transitions — plus ``EXECUTING → EVALUATING`` — are permitted below. The golden single-search
   path still visits exactly ``UNDERSTANDING → PLANNING → SEARCHING → EVALUATING → COMPLETED``.
+* **A7** adds no state and no transition (A7 brief §20). Its three new capabilities are
+  *information-gathering* tools, so — like ``search_routes`` — they are recorded in ``SEARCHING``:
+  the golden multi-step path repeats ``SEARCHING`` once per tool call and still visits exactly
+  ``UNDERSTANDING → PLANNING → SEARCHING → EVALUATING → COMPLETED``. ``EXECUTING`` remains reserved
+  for capabilities that act on the world (Workstream C's ``prepare_booking``).
 * Invalid transitions raise :class:`InvalidTransitionError` rather than being silently applied
   (A3 brief §4: "invalid transitions prevented/handled explicitly").
 """
@@ -149,7 +154,11 @@ class AgentExecutionContext(BaseModel):
     )
     legs: list[Leg] = Field(
         default_factory=list,
-        description="Leg-by-leg detail; empty in A3 (get_route_details is a future B tool).",
+        description=(
+            "Leg-by-leg detail for the recommended route; populated in A7 from the mock "
+            "get_route_details tool result, and empty when that capability was not called or "
+            "returned nothing (never invented)."
+        ),
     )
 
     # --- Trace, honesty, errors, timestamps ---

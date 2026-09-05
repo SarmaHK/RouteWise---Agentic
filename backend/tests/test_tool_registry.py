@@ -49,15 +49,27 @@ def test_names_lists_all_tools_in_order() -> None:
 
 
 # 3. list_available() returns only tools that can currently return data.
-def test_list_available_is_only_search_routes() -> None:
-    assert _registry().list_available() == ["search_routes"]
+# A7 (brief §11): the four Workstream-A data tools are AVAILABLE; the two Workstream-C tools stay
+# NOT_IMPLEMENTED. This list is derived from ToolRegistry — never duplicated elsewhere (§12).
+def test_list_available_is_the_four_mock_data_tools() -> None:
+    assert _registry().list_available() == [
+        "search_routes",
+        "get_fare_estimate",
+        "get_delay_prediction",
+        "get_route_details",
+    ]
 
 
 # 4. status() reports availability, or None for an unknown tool.
 def test_status_reports_availability() -> None:
     registry = _registry()
     assert registry.status("search_routes") is ToolAvailability.available
-    assert registry.status("get_fare_estimate") is ToolAvailability.not_implemented
+    # A7: fare/delay/details are implemented as deterministic MOCK tools …
+    assert registry.status("get_fare_estimate") is ToolAvailability.available
+    assert registry.status("get_route_details") is ToolAvailability.available
+    # … while the Workstream-C capabilities are still honestly unimplemented.
+    assert registry.status("check_availability") is ToolAvailability.not_implemented
+    assert registry.status("prepare_booking") is ToolAvailability.not_implemented
     assert registry.status("does_not_exist") is None
 
 

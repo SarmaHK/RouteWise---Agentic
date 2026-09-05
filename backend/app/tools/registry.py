@@ -30,6 +30,7 @@ from app.tools.base import (
     ToolResult,
     ToolStatus,
 )
+from app.tools.candidates import MockCandidateProvider
 from app.tools.capabilities import (
     AvailabilityTool,
     BookingTool,
@@ -39,6 +40,7 @@ from app.tools.capabilities import (
     RouteDetailsTool,
 )
 from app.tools.executor import ToolExecutor
+from app.tools.intelligence import MockRouteIntelligence
 
 
 class DuplicateToolError(ValueError):
@@ -120,12 +122,20 @@ class ToolRegistry:
 
 
 def _default_tools() -> list[Tool]:
-    """The A4 tool set: one mock search + honest stubs for the B/C-owned capabilities."""
+    """The A7 tool set: four deterministic mock intelligence tools + the two honest C stubs.
+
+    **One shared** :class:`~app.tools.intelligence.MockRouteIntelligence` instance backs all four
+    data tools, so ``search_routes`` and the fare/delay/details tools can never disagree about the
+    same route id (A7 brief §15). This function is the only place tool implementations are wired:
+    Workstream B/C later swap the providers here — behind the same names, ``args_model`` and
+    ``ToolResult`` contract — with no change to the agent (A7 brief §26/§27).
+    """
+    intelligence = MockRouteIntelligence()
     return [
-        MockRouteSearchTool(),
-        FareEstimationTool(),
-        DelayPredictionTool(),
-        RouteDetailsTool(),
+        MockRouteSearchTool(MockCandidateProvider(intelligence)),
+        FareEstimationTool(intelligence),
+        DelayPredictionTool(intelligence),
+        RouteDetailsTool(intelligence),
         AvailabilityTool(),
         BookingTool(),
     ]

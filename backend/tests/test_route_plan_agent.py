@@ -1,4 +1,4 @@
-"""A3 API tests (brief §15, tests 19–20) — POST /api/route/plan end to end.
+"""A3 API tests (brief §15, tests 19–20) — POST /api/route/plan end to end, updated for A7.
 
 Run offline through the FastAPI ``TestClient`` (no MODEL_STUDIO_API_KEY ⇒ deterministic mock
 extractor + mock candidates). Test 21 ("existing A1/A2 tests continue passing") is covered by
@@ -42,17 +42,28 @@ def test_golden_request_produces_structured_recommendation(client: TestClient) -
     assert isinstance(body["alternatives"], list) and body["alternatives"]
 
     # The observable action trace follows the canonical states (brief §11).
-    assert [a["state"] for a in body["agent_actions"]] == [
+    # A7 (brief §20): several SEARCHING tool calls now sit between PLANNING and EVALUATING, but the
+    # canonical order is unchanged and no new state was invented.
+    states = [a["state"] for a in body["agent_actions"]]
+    assert list(dict.fromkeys(states)) == [
         "UNDERSTANDING",
         "PLANNING",
         "SEARCHING",
         "EVALUATING",
         "COMPLETED",
     ]
+    tools = [a["tool_call"]["name"] for a in body["agent_actions"] if a.get("tool_call")]
+    assert tools[0] == "search_routes"
+    assert {"get_fare_estimate", "get_delay_prediction", "get_route_details"} <= set(tools)
+    assert all(a["tool_call"]["data_source"] == "mock" for a in body["agent_actions"] if a.get("tool_call"))
 
-    # A3 leaves legs empty (get_route_details is a future Workstream B tool) — no fabricated
-    # leg-by-leg schedules (AGENT_SPEC §16).
-    assert body["legs"] == []
+    # A7 (brief §9/§22): legs now carry the recommended route's leg detail from the mock
+    # get_route_details tool — structured and explicitly mock, never a fabricated live schedule.
+    assert [leg["id"] for leg in body["legs"]] == ["R1-L1", "R1-L2", "R1-L3"]
+    assert all(leg["data_source"] == "mock" for leg in body["legs"])
+    # The legs are internally consistent with the recommended totals (§15 data consistency).
+    assert sum(leg["duration_min"] for leg in body["legs"]) == recommendation["total_duration_min"]
+    assert sum(leg["fare_lkr"] for leg in body["legs"]) == recommendation["total_fare_lkr"]
 
     # A concise explanation is surfaced, and it is honest about being mock.
     assert body["reasoning"]

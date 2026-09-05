@@ -20,19 +20,30 @@
 > for route selection. **A4 turns that tool abstraction into a clean capability-execution system**
 > (§7): a structured `ToolResult`, Pydantic input validation, an explicit availability model, and a
 > safe `ToolExecutor` (timeout + exception/malformed guards) behind the registry — still
-> orchestrator-controlled and still **mock** (only `search_routes` returns data; the rest are honest
+> orchestrator-controlled and still **mock** (at that point only `search_routes` returned data; the
+> rest were honest
 > `NOT_IMPLEMENTED` stubs). **A5 turns that seam into an autonomous, bounded multi-step Qwen
 > tool-calling loop**: the model **selects** which available tool to call next, the app validates +
 > executes it through the registry/executor and feeds the structured result back, repeating until a
 > final answer or the `MAX_AGENT_ITERATIONS` limit (default **8**); the decision stays **grounded** in
-> the A3 engine (no fabrication). Still **mock** (only `search_routes` returns data; the rest are
-> honest `NOT_IMPLEMENTED` stubs). **A6 refines the decision engine itself** (§8–§11): structured
+> the A3 engine (no fabrication). Still **mock** (still only `search_routes` returned data; the rest
+> were honest `NOT_IMPLEMENTED` stubs). **A6 refines the decision engine itself** (§8–§11): structured
 > hard-constraint violations, defensive candidate handling, robust normalization, delay-aware
 > scoring, deterministic ranking with a 1-based `rank`, and grounded `strengths` / `trade_offs` /
 > `constraint_violations` on every route card — still deterministic, still **mock**, and with **no**
-> change to the A5 orchestrator or the A4 tool seam. The remaining agent behavior (replanning,
-> execution, real B/C intelligence) is built in **A7+**. Do not implement later-phase agent logic
-> during A6.
+> change to the A5 orchestrator or the A4 tool seam. **A7 — Mock Intelligence Integration &
+> End-to-End Agent Validation — supersedes the availability notes above** (§6/§7/§15/§16): one shared
+> deterministic mock dataset (`backend/app/tools/intelligence.py`) now backs **four `AVAILABLE` tools**
+> (`search_routes`, `get_fare_estimate`, `get_delay_prediction`, `get_route_details`, all
+> `data_source: mock`), an unknown route id is a structured `ROUTE_NOT_FOUND` failure rather than
+> invented data, the `MockAgentPlanner` exercises a genuine multi-step scenario (`model: mock-qwen`)
+> whose sequence is **not** hard-coded in the real agent, and observed results are merged per route
+> into the agent context (candidate authoritative, conflicts reported) — which also fills
+> `PlanResponse.legs`. The A4 seam, the A5 loop, the A6 engine and the nine canonical states are all
+> **unchanged**. `check_availability` / `prepare_booking` remain honest `NOT_IMPLEMENTED` stubs. The
+> remaining agent behavior (streaming/status endpoints, replanning,
+> execution, real B/C intelligence) is built in **A8+**. Do not implement later-phase agent logic
+> during A7.
 
 ---
 
@@ -163,6 +174,11 @@ Rules:
 - Prefer **fewer, relevant** tool calls; each call must inform a decision.
 - Planning is **deterministic where possible**: same inputs + same mock data ⇒ same plan and
   same recommendation (critical for a reliable demo).
+- **A7:** planning stays **evidence-driven, not scripted**. With four `AVAILABLE` mock tools the
+  agent now plans a genuinely multi-step sequence (search a corridor → enrich each returned route
+  with fare / delay / details), but **the exact sequence is never hard-coded in the real agent** —
+  it is whatever the planner chooses given the tools actually registered and the results actually
+  observed. Remove a tool (or return no candidates) and the plan adapts instead of breaking.
 
 ---
 
@@ -172,20 +188,22 @@ Rules:
   (not prose) so it can reason/score over them.
 - Tool interfaces (contracts in [`API_CONTRACTS.md` §6](API_CONTRACTS.md)):
 
-| Tool | Purpose | Future owner |
-|------|---------|--------------|
-| `search_routes` | Find candidate multi-modal routes. | B |
-| `get_fare_estimate` | Estimate fare(s) for a route/legs. | B (XGBoost) |
-| `get_delay_prediction` | Predict delay risk/minutes. | B (LSTM) |
-| `get_route_details` | Full leg-by-leg detail. | B |
-| `check_availability` | Availability status (simulated). | C |
-| `prepare_booking` | Prepare (never commit) a booking/hold. | C |
+| Tool | Purpose | A7 availability | Future owner |
+|------|---------|-----------------|--------------|
+| `search_routes` | Find candidate multi-modal routes. | `AVAILABLE` — mock | B |
+| `get_fare_estimate` | Estimate fare(s) for a route/legs. | `AVAILABLE` — mock (**A7**) | B (XGBoost) |
+| `get_delay_prediction` | Predict delay risk/minutes. | `AVAILABLE` — mock (**A7**) | B (LSTM) |
+| `get_route_details` | Full leg-by-leg detail. | `AVAILABLE` — mock (**A7**) | B |
+| `check_availability` | Availability status (simulated). | `NOT_IMPLEMENTED` — honest stub | C |
+| `prepare_booking` | Prepare (never commit) a booking/hold. | `NOT_IMPLEMENTED` — honest stub | C |
 
 - **Observe then reason:** tool output feeds evaluation; the Agent must not skip analysis or
   pass results through blindly.
 - **Idempotent reads** are safe to repeat; `prepare_booking` only **prepares**.
 - **MVP:** all tools are **mocked** behind these signatures; B/C replace them later with **no
-  signature change**.
+  signature change**. As of **A7** the four Workstream-B data tools are mocked with **real
+  behavior** (shared dataset, per-route lookups, structured `ROUTE_NOT_FOUND` failures), so the
+  swap to live B data is a data-source change, not an interface change.
 - **A4 status — the capability-execution system (`backend/app/tools/`).** The A3 seam is now a
   clean, safe contract the agent (and, later, an LLM) can rely on:
   - **Tool contract (`base.py`):** each tool declares `name` / `description` / `input_schema` /
@@ -207,10 +225,11 @@ Rules:
     non-`ToolResult` return becomes `MALFORMED_RESULT`, bad input becomes `INVALID_INPUT`, and a
     `not_implemented` / `disabled` / `error` tool never runs. It never raises to the agent and never
     invents data.
-  - **Mock/future boundary:** only `search_routes` is `AVAILABLE` (a deterministic **MOCK** candidate
-    set — `data_source: mock`, `status: mock_data`). `get_fare_estimate`, `get_delay_prediction`,
-    `get_route_details`, `check_availability`, and `prepare_booking` are honest **`NOT_IMPLEMENTED`**
-    stubs (owned by B/C); the executor's gate means they can **never** fabricate a success (§16).
+  - **Mock/future boundary (updated in A7):** the four Workstream-B data tools — `search_routes`,
+    `get_fare_estimate`, `get_delay_prediction`, `get_route_details` — are all `AVAILABLE` on a
+    deterministic **MOCK** dataset (`data_source: mock`, `status: mock_data`). `check_availability`
+    and `prepare_booking` remain honest **`NOT_IMPLEMENTED`** stubs (owned by C); the executor's gate
+    means they can **never** fabricate a success (§16).
   - **A5 status — the multi-step Qwen tool-calling loop.** Invocation is now **model-driven** but
     still safe: the orchestrator exposes only `AVAILABLE` tools as function definitions, Qwen
     **selects** the next call, and every call is validated + executed **only** through the A4
@@ -219,6 +238,39 @@ Rules:
     transcript and fed back to the model verbatim. The loop is **bounded** by `MAX_AGENT_ITERATIONS`
     (default **8**) plus a duplicate-call guard; on the limit it stops, preserves the observed
     actions, and fabricates no recommendation.
+  - **A7 status — mock intelligence & end-to-end agent validation.** The loop above now has a real
+    (mock) world to work in, with no change to the A4 seam or the A5 control flow:
+    - **One shared source of truth.** `backend/app/tools/intelligence.py` (`MockRouteIntelligence`)
+      holds 7 routes across 3 corridors — route-level figures **and** leg detail that provably sums
+      to them (`Σ leg.duration_min == total_duration_min`, likewise fare and walking; `#vehicle legs
+      − 1 == transfers`). All four data tools read **that one instance**, so they cannot disagree
+      about a route. No random values: same input ⇒ same result, every time. This module is the
+      **Workstream-B replacement point**.
+    - **Layering rule (critical).** AGENT → TOOLS → MOCK PROVIDERS → DECISION ENGINE. The agent and
+      the decision engine **never** import the mock dataset; they only ever see it through a
+      `ToolResult`. That is what keeps B's real data a drop-in change.
+    - **Honest unknowns.** A route id outside the dataset (e.g. `R999`) returns `success: false`
+      with `error.code: ROUTE_NOT_FOUND` and `data_source: mock` — never invented numbers.
+    - **Mock planner, real loop.** `MockAgentPlanner` was upgraded to exercise the multi-step
+      scenario (search, then fare/delay/details for each observed candidate), and it labels itself
+      `model: mock-qwen` + `data_source: mock` so a mocked decision is never mistaken for a live
+      one. The scenario lives **only** in the mock planner; the production agent hard-codes no
+      sequence and no winner.
+    - **Tool results are merged, not trusted blindly.** Observed fare/delay/detail results are
+      associated **per route id** with the structured candidates. The **candidate stays
+      authoritative**: a genuinely missing field may be filled from a tool result, a contradiction is
+      **reported** (in the action trace / context errors) and the candidate value is kept, and
+      intelligence that belongs to no candidate is reported and ignored. No decision logic moved into
+      the mock providers — **A7 informs, A6 decides** (§8).
+    - **Golden demo trace (A7).** Colombo Fort → Ella, budget LKR 2,000, mock planner:
+      `UNDERSTANDING → PLANNING → SEARCHING` (`search_routes` → R1/R2/R3, then `get_fare_estimate`
+      for R1/R2/R3, then `get_delay_prediction` for R1/R2/R3, then `get_route_details` for
+      R1/R2/R3) `→ EVALUATING → COMPLETED`, i.e. **14** ordered actions (10 of them tool calls, all
+      `data_source: mock`) using only the five
+      canonical states — **no new `TOOL_CALLING` state was created**. Result: `recommendation = R1`
+      (`score 0.472`), `alternatives = [R2 0.408, R3 excluded — LKR 2,350 over the LKR 2,000 budget]`,
+      `legs = R1-L1/L2/L3`. The winner is **computed by the A6 engine from the observed evidence**;
+      "R1 wins" is nowhere hard-coded, and it is a consequence of the request's constraints.
 
 ---
 
@@ -407,6 +459,11 @@ another, and must **explain** significant trade-offs.
   isn't there.
 - Estimates (fares/delays) are presented as **estimates with uncertainty**, not guarantees.
 - The Agent may say: *"Fares are estimates based on simulated data."*
+- **A7:** the mock intelligence is **deterministic and internally consistent** — one shared dataset
+  feeds all four data tools, so a fare seen via `get_fare_estimate` equals the fare inside the
+  `search_routes` candidate for the same route id. Every payload still carries `data_source: mock`
+  and a short mock note; nothing in A7 is live, real-time, or a real railway/fare feed, and it is
+  never presented that way.
 
 ---
 
@@ -421,6 +478,12 @@ another, and must **explain** significant trade-offs.
 - **Fabricate precision.** Don't present an estimate as an exact guarantee.
 - **Silently drop a hard constraint** to make a route "work" — report honestly instead.
 - **Perform irreversible actions without confirmation** (see §14).
+- **Reach around the tool seam (A7).** Neither the Agent nor the Decision Engine may read a mock
+  dataset directly; intelligence arrives **only** as a structured `ToolResult`.
+- **Turn a failure into data (A7).** An unavailable tool, an unknown route id, or invalid arguments
+  must stay a structured failure — never a substituted "plausible" mock value.
+- **Let a tool result silently overwrite the candidate (A7).** Conflicts are surfaced; the
+  structured candidate stays authoritative (§7 A7 status).
 
 > If the Agent cannot satisfy the request, the correct behavior is to **say so clearly** and
 > offer the nearest alternatives + what the user could relax — never invent a fake success.
@@ -445,12 +508,13 @@ Every completed plan includes a **ReasoningSummary** that:
 | Situation | Correct behavior |
 |-----------|------------------|
 | No route within budget | Report honestly; suggest relaxing budget/time; do **not** fake success (**A3 ✅ / A6 ✅**: `200` + `COMPLETED`, `recommendation: null`, honest `reasoning` naming the closest real fare, over-budget candidates shown as marked alternatives with structured `constraint_violations`). |
-| Fare unknown | Call `get_fare_estimate`; if unavailable, say "estimate unavailable" — never invent. |
-| Delay risk high | Surface it; consider re-planning; don't hide it. |
+| Fare unknown | Call `get_fare_estimate`; if unavailable, say "estimate unavailable" — never invent (**A7 ✅**: the mock tool now answers for any known route id, and returns a structured `ROUTE_NOT_FOUND` for an unknown one). |
+| Delay risk high | Surface it; consider re-planning; don't hide it (**A7 ✅**: `get_delay_prediction` returns a mock `delay_risk` + `delay_min_estimate` that the A6 engine penalizes). |
 | Missing destination | Ask or state the assumption; don't guess silently (**A2 ✅**: sets `clarification_required` + a question). |
-| Booking requested | `prepare_booking` only; explicit confirmation before any real commit (Workstream C). |
-| Data is mock | Label `data_source`; never present as real-time. |
-| Tool failed | Mark step `error`; explain; retry or degrade gracefully. |
+| Booking requested | `prepare_booking` only; explicit confirmation before any real commit (Workstream C — still `NOT_IMPLEMENTED` after **A7**). |
+| Data is mock | Label `data_source`; never present as real-time (**A7 ✅**: every mock payload carries `data_source: mock` + a mock note). |
+| Unknown route id | **A7:** `success: false` + `error.code: ROUTE_NOT_FOUND` + `data_source: mock`; the agent reports it and continues — it never fabricates a route. |
+| Tool failed | Mark step `error`; explain; retry or degrade gracefully (**A7 ✅**: a failed intelligence call is recorded in the trace and the decision still completes on the remaining evidence). |
 
 ---
 
@@ -480,6 +544,16 @@ decision layer in place (§8–§11) without touching the A4 seam or the A5 loop
 hard-constraint validation, defensive candidate preparation, robust feature normalization,
 delay-aware weighted scoring, deterministic ranking/tie-breaking, and additive route-comparison
 fields (`rank` / `valid` / `strengths` / `constraint_violations`) — the winner is still computed, never
-chosen by the model and never hard-coded. The rest of the agent (replanning, execution, real B/C
-intelligence) is built in **A7+**. During **A6**, do **not** implement later-phase agent logic or
-real Workstream B/C functionality — only keep this spec consistent so all future work aligns.
+chosen by the model and never hard-coded. **A7 — Mock Intelligence Integration & End-to-End Agent
+Validation** then gives that loop a complete deterministic world to work in (§6/§7/§15/§16): one
+shared source of mock route truth (`backend/app/tools/intelligence.py`) behind **four `AVAILABLE`
+data tools** (`search_routes`, `get_fare_estimate`, `get_delay_prediction`, `get_route_details`, all
+`data_source: mock`), a structured `ROUTE_NOT_FOUND` failure instead of invented data, an upgraded
+multi-step `MockAgentPlanner` (`model: mock-qwen`) whose scenario is **not** hard-coded into the real
+agent, and conservative per-route merging of tool results into the agent context (candidate
+authoritative, conflicts reported) that populates `PlanResponse.legs`. The A4 seam, the A5 loop, the
+A6 engine and the canonical nine states are all **unchanged** — A7 only feeds them. The rest of the
+agent (streaming/status endpoints, replanning, execution, real B/C intelligence) is built in **A8+**.
+During **A7**, do **not** implement later-phase agent logic or real Workstream B/C functionality
+(no XGBoost/LSTM, no GTFS/GTFS-RT, no PostGIS, no live transit APIs, no booking) — only keep this
+spec consistent so all future work aligns.

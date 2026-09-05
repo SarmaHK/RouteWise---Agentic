@@ -1,4 +1,6 @@
-"""POST /api/route/plan pipe regression (A1 §11), updated for the A3 agent decision."""
+"""POST /api/route/plan pipe regression (A1 §11), updated for the A3 agent decision and A7 mock
+intelligence (the same pipe now returns the recommended route's legs and a multi-step tool trace).
+"""
 
 from __future__ import annotations
 
@@ -17,9 +19,22 @@ def test_plan_pipe_returns_decision(client: TestClient) -> None:
     assert body["recommendation"] is not None
     assert body["recommendation"]["id"] == "R2"
     assert body["recommendation"]["data_source"] == "mock"
-    assert body["legs"] == []
+    # A7 (brief §9/§22): `legs` now carries the RECOMMENDED route's leg detail from the mock
+    # get_route_details tool — R2's two legs here — still explicitly mock, never a live timetable.
+    assert [leg["id"] for leg in body["legs"]] == ["R2-L1", "R2-L2"]
+    assert all(leg["data_source"] == "mock" for leg in body["legs"])
     assert body["alternatives"]
-    assert len(body["agent_actions"]) == 5
+    # A7 (brief §20): several tool calls now sit between PLANNING and EVALUATING, but the canonical
+    # state order is unchanged and no new state (e.g. TOOL_CALLING) was invented.
+    states = [action["state"] for action in body["agent_actions"]]
+    assert list(dict.fromkeys(states)) == [
+        "UNDERSTANDING",
+        "PLANNING",
+        "SEARCHING",
+        "EVALUATING",
+        "COMPLETED",
+    ]
+    assert len(states) > 5  # the multi-step mock intelligence trace is longer than the A3 one
     assert body["agent_actions"][0]["data_source"] == "mock"
     # The normalized TravelRequest is returned so the UI can confirm the contract end-to-end.
     assert body["request"]["origin"] == "Colombo Fort"

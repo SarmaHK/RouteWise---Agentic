@@ -61,6 +61,9 @@ class ToolErrorCode(str, Enum):
     """Stable machine-readable failure codes for a structured result (A4 brief §6/§12).
 
     Clients/agent may branch on these; ``ToolError.message`` is the human-readable companion.
+    **A7** adds one domain code, ``ROUTE_NOT_FOUND``: an *available* mock intelligence tool asked
+    about a route id the deterministic dataset does not hold must say so honestly instead of
+    inventing a route (A7 brief §18). It is still a structured failure — never mock data.
     """
 
     INVALID_INPUT = "INVALID_INPUT"  # payload failed the tool's input validation
@@ -71,6 +74,7 @@ class ToolErrorCode(str, Enum):
     EXECUTION_ERROR = "EXECUTION_ERROR"  # the tool raised
     TIMEOUT = "TIMEOUT"  # the tool exceeded its execution budget
     MALFORMED_RESULT = "MALFORMED_RESULT"  # the tool did not return a ToolResult
+    ROUTE_NOT_FOUND = "ROUTE_NOT_FOUND"  # A7: the requested route id is not in the (mock) dataset
 
 
 @dataclass

@@ -20,7 +20,7 @@
 | **Track** | Hospitality & Tourism |
 | **Team size** | 3 members (3 workstreams) |
 | **Reasoning engine** | Qwen (Alibaba Cloud Model Studio) |
-| **Implementation sequencing** | Workstream A built first (phases A1–A6 done); B & C documented, built to the same interfaces |
+| **Implementation sequencing** | Workstream A built first (phases A1–A7 done); B & C documented, built to the same interfaces |
 
 ---
 
@@ -167,6 +167,12 @@ The hackathon MVP must be **demonstrably reliable**:
   routes, plausible LKR fares, believable delays) but clearly **not real-time**.
 - Every mock sits **behind the same interface** the real service will use, so B/C swap in without
   changing A or the frontend.
+- **One shared source of mock truth (A7).** All mock route intelligence lives in a single module
+  (`backend/app/tools/intelligence.py`) that every data tool reads — routes are **not** duplicated
+  inside each tool, and there are **no random values**, so the same input always gives the same
+  result and the tools can never contradict each other about a route. That module is the
+  **Workstream-B replacement point**: B supplies real data behind the same accessors and the same
+  tool signatures, and nothing above the tool layer changes.
 - The Agent **reasons over** the mock data and tools — the golden scenario's answer is **never
   hard-coded**.
 - The Agent must **never pretend mock data is real-time** (see
@@ -304,14 +310,52 @@ Full definitions + scoring model: [`AGENT_SPEC.md` §8–10](AGENT_SPEC.md).
     (`ConstraintViolation` + four `Recommendation` fields), mirrored in `frontend/src/types/api.ts` and
     rendered inside the existing route cards using the current design system only.
   - **Scope:** no real B/C data, no replanning/execution, no Travel Pass; all route data still **mock**.
-- **No route-planning features beyond A6's refined mock decision (by design).** No
+- **Phase A7 — Mock Intelligence Integration & End-to-End Agent Validation: COMPLETE.** The agent now
+  runs a **full, realistic multi-step workflow** against a complete deterministic mock environment —
+  the A4 seam, the A5 loop, the A6 engine and the nine canonical states are all **unchanged**:
+  - **One shared source of mock route truth** (`backend/app/tools/intelligence.py` —
+    `MockRouteIntelligence`): 7 routes across 3 corridors (Colombo Fort↔Ella, Kandy↔Ella,
+    Colombo Fort↔Kandy), each with route-level figures **and** leg detail that provably sums to them
+    (`Σ leg duration/fare/walking == route totals`; `vehicle legs − 1 == transfers`). No randomness;
+    no per-tool duplication of R1/R2/R3. `candidates.py` is now a thin facade over it.
+  - **Three new tools through the A4 seam** — `get_fare_estimate`, `get_delay_prediction`,
+    `get_route_details` — ordinary `Tool` subclasses registered in the existing `ToolRegistry` and run
+    by the existing `ToolExecutor`. **No** second executor, registry, result class or tool base class.
+    With `search_routes` that makes **four `AVAILABLE` mock data tools** (`data_source=mock`,
+    `status=mock_data`); `check_availability` / `prepare_booking` stay honest `NOT_IMPLEMENTED` stubs.
+  - **Honest unknowns:** `ToolErrorCode.ROUTE_NOT_FOUND` (additive) — an id outside the dataset (e.g.
+    `R999`) returns `success: false` + `data_source: mock`, never fabricated numbers.
+  - **Tool definitions stay derived:** the Qwen function schema is built from
+    `registry.list_available()`, so the three new tools joined it automatically — the tool list is not
+    hard-coded a second time.
+  - **Model-driven multi-step planning:** `MockAgentPlanner` was upgraded to a realistic scenario
+    (search the corridor → fare/delay/details for each observed route → finalize), labelled
+    `model: mock-qwen` + `data_source: mock`. `PlannerContext` gained **additive** evidence fields
+    (`called_tools`, `route_ids`). The scenario lives **only** in the mock planner — the production
+    agent hard-codes neither the sequence nor the winner, and adapts when a tool or corridor is absent.
+  - **Conservative merging:** observed results are associated **per route id** with the structured
+    candidates; the **candidate stays authoritative** (a missing field may be filled, a contradiction
+    is reported and the candidate value kept, unassociated intelligence is reported and ignored).
+    `PlanResponse.legs` is now populated for the recommended route. **A7 informs; A6 decides** — no
+    decision logic moved into the mock providers, and the golden outcome is unchanged (R1 0.472 >
+    R2 0.408, R3 excluded on budget).
+  - **Golden trace:** UNDERSTANDING → PLANNING → SEARCHING (`search_routes` → R1/R2/R3, then fare ×3,
+    then delay ×3, then details ×3) → EVALUATING → COMPLETED — **14 actions (10 tool calls) over the
+    existing five states**, no new `TOOL_CALLING` state.
+  - **Frontend (minimal):** a per-leg list on the recommended route card and a ✓/✗ glyph on each
+    timeline tool line (derived from the call's real `status`) — existing design system only, **no new
+    CSS, no new components**.
+  - **Scope:** strictly Workstream A. No XGBoost/LSTM, no PostgreSQL/PostGIS, no GTFS/GTFS-RT, no live
+    transit APIs, no browser/railway automation, no booking, no Coder Work/Wake, no Travel Pass, no
+    monitoring, no cloud deploy. All route data is still **mock**.
+- **No route-planning features beyond A7's end-to-end mock agent run (by design).** No
   execution/booking, disruption replanning, ML, database, GTFS, automation, or Travel Pass are
-  built yet — those belong to A7+ / Workstream B / Workstream C. All A6 route data is **mock**.
+  built yet — those belong to A8+ / Workstream B / Workstream C. All A7 route data is **mock**.
 - **Honesty:** real Qwen connectivity is **not** claimed unless a key is configured; with no key the
   backend uses the mock extractor/client **and the mock tool-calling planner** (see
   [`AGENT_SPEC.md` §15](AGENT_SPEC.md)).
-- **Next (when instructed):** Workstream A phase **A7 — Mock Intelligence Integration** (wire in mock
-  fares/delays through the B boundary); B and C proceed against
+- **Next (when instructed):** Workstream A phase **A8 — Agent Experience / UI** (agent-activity UI and
+  route presentation); B and C proceed against
   the agreed interfaces.
 
 ---
@@ -326,7 +370,7 @@ Full definitions + scoring model: [`AGENT_SPEC.md` §8–10](AGENT_SPEC.md).
 | **A4** | **Agent Tool System** ✅ | Tool contract + structured result, availability model, registry + safe executor; `search_routes` (mock) available, other capabilities honest `NOT_IMPLEMENTED` stubs. |
 | **A5** | **Tool-Calling Orchestrator** ✅ | Bounded multi-step Qwen tool-calling loop (decide → call → observe): adapter (real + deterministic mock), iteration limit + duplicate/loop detection, decision grounded in the A3 engine. |
 | **A6** | **Route Decision Engine** ✅ | Constraint-aware candidate evaluation: structured hard-constraint violations, defensive/malformed-candidate handling, robust normalization, preference-weighted + delay-aware scoring, deterministic ranking, grounded reasons/strengths/trade-offs. |
-| A7 | Mock Intelligence Integration | Wire in mock fares/delays (B boundary). |
+| **A7** | **Mock Intelligence Integration** ✅ | Complete deterministic mock environment behind the B boundary: one shared mock route-truth module, `get_fare_estimate` / `get_delay_prediction` / `get_route_details` as `AVAILABLE` mock tools, `ROUTE_NOT_FOUND`, a multi-step `MockAgentPlanner` (`mock-qwen`), conservative per-route result merging + populated `legs`, and an end-to-end agent validation (golden trace). |
 | A8 | Agent Experience / UI | Agent-activity UI, route presentation. |
 | A9 | Final API & Agent State | Stable `POST /api/route/plan`, agent status API. |
 | A10 | Workstream B Handover | Contracts + mocks ready for B to replace. |
