@@ -38,9 +38,9 @@ function toConnection(status: HealthStatus): ConnectionState {
 }
 
 const CONNECTION_LABEL: Record<ConnectionState, string> = {
-  online: 'Backend online',
-  checking: 'Checking backend…',
-  offline: 'Backend offline',
+  online: 'Connected',
+  checking: 'Connecting…',
+  offline: 'Disconnected',
 };
 
 export default function App() {
@@ -84,7 +84,7 @@ export default function App() {
             </span>
           </div>
 
-          <p className="phase-badge">Phase A9 · Stabilization</p>
+          <p className="phase-badge">Your Intelligent Travel Companion</p>
 
           <StatusIndicator
             state={connection}
@@ -106,8 +106,7 @@ export default function App() {
       <footer className="app-footer">
         <div className="rw-container">
           <p className="rw-meta">
-            RouteWise Agentic · Workstream A · Phase A9 stabilization (mock data). Design tokens
-            are the single source of visual truth.
+            RouteWise Agentic — An intelligent travel companion that plans, adapts, and coordinates your journey.
           </p>
         </div>
       </footer>

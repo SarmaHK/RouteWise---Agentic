@@ -44,7 +44,7 @@ export function DelayBadge({ level, minutes, className }: DelayBadgeProps) {
       : `${capitalize(level)} risk`;
 
   return (
-    <Badge tone={toneFor(level)} className={className} title="Simulated delay risk — mock data">
+    <Badge tone={toneFor(level)} className={className} title="Simulated delay risk">
       {label}
     </Badge>
   );

@@ -39,7 +39,6 @@ export function AgentActivity({ actions, busy = false, className }: AgentActivit
         <h2 className="agent-activity__title" id="agent-activity-title">
           Agent activity
         </h2>
-        <span className="rw-meta">Observable steps · mock data</span>
       </header>
 
       <ol className="agent-progress" aria-label="Agent progress">
@@ -63,7 +62,7 @@ export function AgentActivity({ actions, busy = false, className }: AgentActivit
           <span className="skeleton skeleton--step" aria-hidden="true" />
           <span className="skeleton skeleton--step" aria-hidden="true" />
           <span className="skeleton skeleton--step" aria-hidden="true" />
-          <p className="agent-activity__working">RouteWise is working through your request…</p>
+          <p className="agent-activity__working">RouteWise is comparing your options.</p>
         </div>
       )}
 
@@ -77,8 +76,7 @@ export function AgentActivity({ actions, busy = false, className }: AgentActivit
 
       {!busy && actions.length === 0 && (
         <p className="agent-activity__empty">
-          Submit a request and RouteWise will show every step it takes — understanding, planning,
-          the tools it calls, and how it decides.
+          Tell us where you're starting, where you're headed, and what matters to you.
         </p>
       )}
     </section>

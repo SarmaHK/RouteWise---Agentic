@@ -13,6 +13,7 @@
 import type { ReactNode } from 'react';
 
 import type { ConstraintViolation, Leg, Recommendation } from '../../types/api';
+import type { BookingHoldResponse } from '../../services/api/execution';
 import { formatKm, formatMinutes } from '../../services/format';
 import { Badge } from '../ui';
 import { DelayBadge } from './DelayBadge';
@@ -77,10 +78,27 @@ export interface RouteCardProps {
   recommended?: boolean;
   /** Legs of the recommended route (the backend sends legs only for the chosen route). */
   legs?: Leg[];
+  /** Workstream C: Trigger the booking flow. */
+  onBook?: (routeId: string) => void;
+  /** Workstream C: The active booking hold. */
+  bookingHold?: BookingHoldResponse | null;
+  /** Workstream C: Is a booking request currently in flight? */
+  isBooking?: boolean;
+  /** Workstream C: Trigger generating the travel pass. */
+  onGeneratePass?: (reference: string) => void;
   className?: string;
 }
 
-export function RouteCard({ route, recommended = false, legs = [], className }: RouteCardProps) {
+export function RouteCard({ 
+  route, 
+  recommended = false, 
+  legs = [], 
+  onBook,
+  bookingHold,
+  isBooking = false,
+  onGeneratePass,
+  className 
+}: RouteCardProps) {
   const classes = ['route-card', recommended ? 'route-card--recommended' : '', className ?? '']
     .filter(Boolean)
     .join(' ');
@@ -109,9 +127,6 @@ export function RouteCard({ route, recommended = false, legs = [], className }: 
         </div>
         <div className="route-card__badges">
           {recommended && <Badge tone="primary">Recommended</Badge>}
-          <Badge tone="secondary" mono>
-            {route.data_source ?? 'mock'}
-          </Badge>
         </div>
       </header>
 
@@ -129,7 +144,7 @@ export function RouteCard({ route, recommended = false, legs = [], className }: 
       {/* Leg-by-leg detail (A7 populates `legs` for the recommended route from mock data). */}
       {recommended && legs.length > 0 && (
         <div className="route-card__legs">
-          <h4 className="route-card__subtitle">Legs — mock route details</h4>
+          <h4 className="route-card__subtitle">Journey details</h4>
           <RouteTimeline legs={legs} />
         </div>
       )}
@@ -185,8 +200,45 @@ export function RouteCard({ route, recommended = false, legs = [], className }: 
           </>
         ))}
 
+      {recommended && onBook && (
+        <div className="route-card__execution">
+          {bookingHold ? (
+            <div className="hold-voucher-card">
+              <div className="hold-voucher-head">
+                <span className="badge--success">Hold Secured</span>
+                <span className="hold-ref">REF: {bookingHold.reference}</span>
+              </div>
+              <p className="hold-voucher-body">
+                Your seats are reserved for {bookingHold.expires_in_minutes} minutes.
+              </p>
+              {onGeneratePass && (
+                <div className="hold-voucher-actions">
+                  <button 
+                    className="btn--accent"
+                    onClick={() => onGeneratePass(bookingHold.reference)}
+                  >
+                    Generate Travel Pass
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="execution-action-bar">
+              <button 
+                className="btn--accent"
+                onClick={() => onBook(route.id)}
+                disabled={isBooking}
+              >
+                {isBooking ? 'Securing hold...' : 'Book this route'}
+              </button>
+              <span className="execution-hint">No payment required for booking hold</span>
+            </div>
+          )}
+        </div>
+      )}
+
       <p className="route-card__mock rw-meta">
-        Illustrative mock data — not a live train/bus, fare, delay, seat, or booking.
+        Demo data
       </p>
     </article>
   );

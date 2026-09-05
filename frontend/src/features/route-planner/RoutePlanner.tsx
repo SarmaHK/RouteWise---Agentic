@@ -15,11 +15,13 @@
 import { useCallback, useState } from 'react';
 
 import { planRoute } from '../../services/api';
+import { replanRoute, prepareBookingHold, getTravelPass } from '../../services/api/execution';
+import type { BookingHoldResponse, TravelPassData } from '../../services/api/execution';
 import { describeError } from '../../services/format';
 import type { AgentState, PlanResponse } from '../../types/api';
 import { Alert, Button, Card } from '../../components/ui';
 import { AgentActivity, AgentStatus, ReasoningSummary } from '../../components/agent';
-import { RouteCard, TravelRequestSummary, TripForm } from '../../components/travel';
+import { RouteCard, TravelRequestSummary, TripForm, DisruptionControlBar, TravelPassModal } from '../../components/travel';
 
 import './RoutePlanner.css';
 
@@ -44,6 +46,10 @@ export function RoutePlanner({ connection, onRecheckConnection }: RoutePlannerPr
   const [data, setData] = useState<PlanResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const [bookingHold, setBookingHold] = useState<BookingHoldResponse | null>(null);
+  const [isBooking, setIsBooking] = useState(false);
+  const [travelPass, setTravelPass] = useState<TravelPassData | null>(null);
+
   const busy = status === 'loading';
   const online = connection === 'online';
 
@@ -54,6 +60,8 @@ export function RoutePlanner({ connection, onRecheckConnection }: RoutePlannerPr
     // old run's `agent_actions` keep feeding the rail while this one is in flight, so the stepper
     // would show the last run's completed milestones during the new request (stale state).
     setData(null);
+    setBookingHold(null);
+    setTravelPass(null);
     try {
       const response = await planRoute({ raw_text: text });
       setData(response);
@@ -74,6 +82,48 @@ export function RoutePlanner({ connection, onRecheckConnection }: RoutePlannerPr
   const legs = data?.legs ?? [];
   const reasoning = data?.reasoning ?? null;
 
+  const handleDisruptionChanged = useCallback(async () => {
+    if (!data || !request) return;
+    setStatus('loading');
+    setData(null);
+    setBookingHold(null);
+    setTravelPass(null);
+    try {
+      const response = await replanRoute({
+        request,
+        previous_recommendation_id: recommendation?.id,
+        disruption_notice: "User injected or cleared a disruption",
+      });
+      setData(response);
+      setStatus('success');
+    } catch (err) {
+      setError(describeError(err));
+      setStatus('error');
+    }
+  }, [data, request, recommendation]);
+
+  const handleBook = useCallback(async (routeId: string) => {
+    setIsBooking(true);
+    try {
+      const response = await prepareBookingHold({ route_id: routeId });
+      setBookingHold(response);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsBooking(false);
+    }
+  }, []);
+
+  const handleGeneratePass = useCallback(async (reference: string) => {
+    if (!data) return;
+    try {
+      const response = await getTravelPass({ plan: data, booking_reference: reference });
+      setTravelPass(response);
+    } catch (err) {
+      console.error(err);
+    }
+  }, [data]);
+
   // The header/rail state chip reflects only real states: the response status on success, ERROR on
   // a failed call, and an honest "Working…" (busy) while in flight — never a faked stage (§25).
   const agentState: AgentState | null =
@@ -87,15 +137,9 @@ export function RoutePlanner({ connection, onRecheckConnection }: RoutePlannerPr
     <div className="app-shell">
       <div className="app-shell__main">
         <div className="page-head">
-          <h1 className="page-head__title">Plan a route</h1>
+          <h1 className="page-head__title">Where are you going?</h1>
           <p className="page-head__lead">
-            Describe a trip in plain language. RouteWise turns it into a structured{' '}
-            <span className="rw-mono">TravelRequest</span>, runs an agent through{' '}
-            <span className="rw-mono">
-              UNDERSTANDING → PLANNING → SEARCHING → EVALUATING → COMPLETED
-            </span>
-            , and explains the route it chose. Recommendations are illustrative <strong>mock</strong>{' '}
-            data — never live Sri Lankan transit.
+            RouteWise coordinates routes, fares, delays, and travel constraints to find the journey that works best for you. (Demo environment)
           </p>
         </div>
 
@@ -130,20 +174,17 @@ export function RoutePlanner({ connection, onRecheckConnection }: RoutePlannerPr
         </Card>
 
         {showResults && (
+          <DisruptionControlBar 
+            onDisruptionChanged={handleDisruptionChanged} 
+            disabled={busy || !online} 
+          />
+        )}
+
+        {showResults && (
           <section className="results" aria-labelledby="results-title">
             <h2 className="results__title" id="results-title">
-              Plan result
+              Best match for your trip
             </h2>
-
-            <p className="results__status rw-meta">
-              Response status: <span className="rw-mono">{data?.status}</span>
-              {request?.extraction_source && (
-                <>
-                  {' · '}
-                  extraction source: <span className="rw-mono">{request.extraction_source}</span>
-                </>
-              )}
-            </p>
 
             {/* Clarification (§12.8/§14.8): the agent stopped before deciding — no route invented. */}
             {needsClarification && request && (
@@ -161,7 +202,17 @@ export function RoutePlanner({ connection, onRecheckConnection }: RoutePlannerPr
               </Alert>
             )}
 
-            {recommendation && <RouteCard route={recommendation} recommended legs={legs} />}
+            {recommendation && (
+              <RouteCard 
+                route={recommendation} 
+                recommended 
+                legs={legs} 
+                onBook={handleBook}
+                bookingHold={bookingHold}
+                isBooking={isBooking}
+                onGeneratePass={handleGeneratePass}
+              />
+            )}
 
             {recommendation && reasoning && <ReasoningSummary summary={reasoning} />}
 
@@ -169,7 +220,7 @@ export function RoutePlanner({ connection, onRecheckConnection }: RoutePlannerPr
             {noRouteFits && (
               <Alert
                 tone="warning"
-                title="No mock candidate fits every hard constraint."
+                title="We couldn't find a suitable journey."
                 hint={reasoning ?? undefined}
                 role="status"
               />
@@ -202,6 +253,8 @@ export function RoutePlanner({ connection, onRecheckConnection }: RoutePlannerPr
         <AgentStatus state={agentState} busy={busy} className="app-shell__rail-status" />
         <AgentActivity actions={actions} busy={busy} />
       </aside>
+
+      <TravelPassModal pass={travelPass} onClose={() => setTravelPass(null)} />
     </div>
   );
 }

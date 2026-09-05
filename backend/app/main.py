@@ -14,7 +14,13 @@ Run locally from the ``backend/`` directory::
 from __future__ import annotations
 
 import logging
+import sys
 from contextlib import asynccontextmanager
+from pathlib import Path
+
+# Add the repository root to PYTHONPATH so we can import models/ and automation/ locally
+# (this mimics the Docker environment where both are in the pythonpath).
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder

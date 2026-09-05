@@ -22,4 +22,6 @@ export type { DelayBadgeProps } from './DelayBadge';
 export { ModeIcon } from './ModeIcon';
 export type { ModeIconProps } from './ModeIcon';
 export { TravelRequestSummary } from './TravelRequestSummary';
+export { DisruptionControlBar } from './DisruptionControlBar';
+export { TravelPassModal } from './TravelPassModal';
 export type { TravelRequestSummaryProps } from './TravelRequestSummary';

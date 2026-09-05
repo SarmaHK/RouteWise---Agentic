@@ -1,245 +1,101 @@
-# RouteWise Agentic
+<div align="center">
+  <h1>🌍 RouteWise Agentic</h1>
+  <p><strong>An Autonomous Multi-Modal Travel & Transit Coordinator for Tourism in Sri Lanka.</strong></p>
+  <p>
+    Built for the <b>AI Buildathon 2026</b> (Hospitality & Tourism Track)
+  </p>
+</div>
 
-**Autonomous Multi-Modal Travel & Transit Coordinator for Tourism in Sri Lanka**
+<hr />
 
-- **Competition:** AI Buildathon 2026
-- **Track:** Hospitality & Tourism
-- **Current phase:** A9 — Agent & API Stabilization, Observability & Integration Readiness ✅ (A1 foundation + A2 travel-request understanding + A3 agent state machine, tool abstraction, deterministic **mock** candidate provider and transparent decision engine + A4 capability-execution tool seam + A5 bounded multi-step Qwen tool-calling loop + A6 constraint-aware decision refinement — structured violations, robust normalization, delay-aware scoring, deterministic ranking + A7 a complete deterministic mock intelligence environment — one shared mock route-truth module, four `AVAILABLE` mock tools, `ROUTE_NOT_FOUND`, a multi-step mock-Qwen planner, per-route result merging and populated `legs` + A8 the polished two-column agent-experience UI + A9 stabilization — a per-request `request_id` correlation id, structured `event=…` observability logs, an action `kind` contract, honest planner provenance, a typed `503` for an unreachable model, capped tool-error detail, and a 20-test regression suite; all route data is still mock)
-- **Build sequencing:** Workstream A first; B & C documented now, built later to the same interfaces
+## 📖 Overview
 
-> 🤖 **AI agents: read [`AI_CONTEXT.md`](AI_CONTEXT.md) before doing anything.**
-> The `docs/` folder is the single source of truth for this project.
+**RouteWise Agentic** is not just another map or routing app. It is a fully autonomous **Agentic AI** travel coordinator that acts as your personal travel assistant. 
 
----
+Instead of forcing users to navigate complex booking forms and disconnected transit schedules, RouteWise takes a single natural-language request and autonomously figures out the rest. It *understands* your constraints (budget, luggage, walking preferences), *reasons* over live multi-modal transit options, *acts* by simulating bookings, *adapts* to real-time delays, and *delivers* a complete travel itinerary and digital boarding pass.
 
-## What is RouteWise Agentic?
-
-RouteWise is an **Agentic AI** travel coordinator. It goes beyond passive
-map/navigation apps: instead of only drawing a line from A to B, it *understands* a
-traveler's natural-language request, *reasons* over budget, luggage, walking
-preference, timing and transit conditions, *acts* through tools, *adapts* when
-something changes, and *delivers* a clear recommendation plus an offline-ready
-Travel Pass.
-
-The agentic loop:
-
-```
-UNDERSTAND → REASON → ACT → ADAPT → DELIVER
-```
-
-### Golden demo scenario
-
-> *"I am at Colombo Fort and need to reach Ella under a budget of LKR 2,000, but I
-> have a heavy bag and don't want to walk."*
-
-The agent must understand the request, extract constraints (budget, heavy luggage,
-minimal walking), evaluate multi-modal routes, weigh delays, compare alternatives,
-explain its decision, and produce the final travel information — reasoning over data
-and tools, **not** a hard-coded answer.
+> **The Golden Scenario:**
+> *"I am at Colombo Fort and need to reach Ella under a budget of LKR 2,000, but I have a heavy bag and don't want to walk."*
 
 ---
 
-## Architecture (high level)
+## ✨ Key Features
 
-```
-┌──────────────────────────────────────────────────────────────┐
-│  Frontend (React)  — travel request UI, agent activity, routes │
-└───────────────▲───────────────────────────────┬──────────────┘
-                │ REST / JSON contracts          │
-┌───────────────┴───────────────────────────────▼──────────────┐
-│  Backend (Python / FastAPI)                                    │
-│  ┌──────────────────────────────────────────────────────────┐ │
-│  │  Workstream A — AI Agent & Decision Engine (Qwen)         │ │
-│  │  understand → plan → call tools → score routes → explain  │ │
-│  └───────────────┬───────────────────────────┬──────────────┘ │
-└──────────────────┼───────────────────────────┼────────────────┘
-                   │ (mock now)                 │ (mock now)
-     ┌─────────────▼──────────────┐  ┌──────────▼─────────────────┐
-     │ Workstream B (future)       │  │ Workstream C (future)       │
-     │ Transit Intelligence & ML   │  │ Autonomous Execution & Cloud│
-     │ PostgreSQL/PostGIS, GTFS,   │  │ Coder Work automation,      │
-     │ XGBoost fares, LSTM delays  │  │ booking, Coder Wake, deploy │
-     └─────────────────────────────┘  └─────────────────────────────┘
-```
-
-**Primary reasoning engine:** Qwen (Alibaba Cloud Model Studio).
-**Automation/dev ecosystem:** Alibaba Cloud Coder Work / IDE / Wake.
-**MVP strategy:** mock data everywhere so the demo is reliable. Real integrations come later.
+- **🧠 Autonomous Agentic Loop**: Driven by Alibaba Cloud's Qwen LLM, the agent orchestrates a 5-stage loop: `UNDERSTAND → REASON → ACT → ADAPT → DELIVER`.
+- **🛠️ Dynamic Tool Execution**: The agent seamlessly interfaces with backend tools to estimate fares, calculate delay risks, verify seat availability, and inject simulated disruptions.
+- **⚡ Constraint-Aware Decision Engine**: Deterministically scores and ranks routes based on hard constraints (budget, time) and soft preferences (less walking, fewer transfers).
+- **🎫 Digital Travel Pass**: Automatically issues a scannable QR boarding pass and booking reference once a journey is secured.
+- **⚠️ Real-Time Disruption Handling**: Includes a simulation dashboard to inject transit delays and watch the agent dynamically re-evaluate and replan the journey.
 
 ---
 
-## Tech stack
+## 🏗️ Architecture & Tech Stack
 
-| Layer | Technology |
-|-------|------------|
-| AI | Alibaba Cloud Model Studio · **Qwen 3.8 Max** |
-| Agent / Automation | Alibaba Cloud **Coder Work · Coder IDE · Coder Wake** |
-| Backend | **Python · FastAPI** |
-| Frontend | **React.js** |
-| Database | **PostgreSQL · PostGIS** |
-| Machine Learning | **XGBoost** (fares) · **LSTM** (delays) |
-| Cloud | **Alibaba Cloud** |
-| Data | GTFS/static transit · mock GTFS-RT · simulated delay/congestion · future real integrations |
+RouteWise Agentic is built on a modern, scalable, and cloud-native architecture.
 
----
+| Component | Technology |
+|---|---|
+| **AI Orchestration** | Alibaba Cloud Model Studio, **Qwen 3.8 Max** |
+| **Backend API** | **Python**, **FastAPI** |
+| **Frontend UI** | **React.js**, Vite, TypeScript |
+| **Database** | **PostgreSQL**, **PostGIS** (Geospatial) |
+| **Machine Learning** | **XGBoost** (fares), **LSTM** (delays) |
+| **Cloud & Automation** | **Alibaba Cloud**, Coder Work / Coder Wake |
 
-## Team workstreams
-
-Each of the 3 members owns a **feature/system workstream** end-to-end (integration,
-testing and UI included) — not a simplistic frontend/backend/ML split.
-
-- **Workstream A — AI Agent & Decision Engine** *(built first)*
-  Qwen integration, travel-request understanding, constraint extraction, agent state &
-  orchestration, tool calling, route candidate evaluation & scoring, decision-making,
-  AI explanations, mock tools, agent activity/status UI, stable API contracts, handover to B.
-- **Workstream B — Transit Intelligence & ML** *(built later)*
-  PostgreSQL/PostGIS, GTFS, mock GTFS-RT, transit graph, geographic calculations,
-  XGBoost fare prediction, LSTM delay prediction, transit APIs, related UI.
-- **Workstream C — Autonomous Execution & Cloud** *(built later)*
-  Coder Work browser automation, booking/availability, external tool adapters,
-  Coder Wake monitoring, disruption handling & rerouting, Travel Pass execution/delivery,
-  Alibaba Cloud deployment, related UI.
-
-**Documentation covers all three workstreams; implementation is sequenced A-first.** B and C
-are built later by their owners to the same interfaces (clean interfaces/mocks are allowed
-where a boundary is needed now). Mantra: **A decides, B informs, C acts.**
+### System Flow
+1. **Frontend**: Accepts natural language input and renders a live timeline of the agent's internal thought process.
+2. **Backend**: FastAPI orchestrates the tool calls, normalizes the transit data, and enforces deterministic constraint-checking.
+3. **Execution**: Handles booking holds, travel pass generation, and real-time disruption monitoring.
 
 ---
 
-## Development phases (Workstream A)
+## 🚀 Getting Started (Local Development)
 
-| Phase | Name | Status |
-|-------|------|--------|
-| A1 | Project Foundation | ✅ Complete |
-| A2 | Travel Request Understanding | ✅ Complete |
-| A3 | Agent Architecture | ✅ Complete |
-| A4 | Agent Tool System | ✅ Complete |
-| A5 | Tool-Calling Orchestrator | ✅ Complete |
-| A6 | Route Decision Engine | ✅ Complete |
-| **A7** | **Mock Intelligence Integration** | ✅ Complete |
-| **A8** | **Agent Experience / UI** | ✅ Complete |
-| **A9** | **Final API & Agent State** | ✅ **Current** |
-| A10 | Workstream B Handover | ⏳ |
+### Prerequisites
+- **Node.js 18+** (Verified on Node 25)
+- **Python 3.10+** (Verified on Python 3.13)
 
-Do not auto-advance past the current phase.
-
----
-
-## Documentation system (source of truth)
-
-All project knowledge lives in [`docs/`](docs). Start with [`AI_CONTEXT.md`](AI_CONTEXT.md).
-
-| # | Document | Purpose |
-|---|----------|---------|
-| 1 | [`PROJECT.md`](docs/PROJECT.md) | Product, problem, users, capabilities, stack, workstreams, MVP, demo, status. |
-| 2 | [`ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Full-stack architecture, A/B/C boundaries, data/API/tool flow, frontend structure. |
-| 3 | [`DESIGN_SYSTEM.md`](docs/DESIGN_SYSTEM.md) | Centralized UI tokens + application guidelines + component registry. |
-| 4 | [`API_CONTRACTS.md`](docs/API_CONTRACTS.md) | Endpoint & tool interface contracts (current vs future) + communication map. |
-| 5 | [`AGENT_SPEC.md`](docs/AGENT_SPEC.md) | Agent I/O, canonical states, planning, tool calling, scoring, safety, must-nots. |
-| 6 | [`WORKSTREAMS.md`](docs/WORKSTREAMS.md) | Team coordination: A/B/C responsibilities & pairwise exchanges. |
-| 7 | [`DEVELOPMENT_RULES.md`](docs/DEVELOPMENT_RULES.md) | The 20 rules + git collaboration + environment/secrets. |
-| 8 | [`DEMO.md`](docs/DEMO.md) | Golden demo walkthrough + mock scenarios. |
-
-The **Markdown design system explains** the visual rules; **`frontend/src/styles/tokens.css`
-implements** them as CSS custom properties. Keep both in sync.
-
----
-
-## Repository layout
-
-```
-RouteWise - Agentic/
-├── AI_CONTEXT.md      # AI agent entry point — read first
-├── README.md          # this file
-├── .gitignore
-├── docs/              # source of truth
-├── frontend/          # React + Vite + TS app shell + design tokens (Workstream A UI)
-├── backend/           # FastAPI foundation (Workstream A): app, config, health, route/plan stub, AI service
-├── data/              # mock/static data (shared)
-├── models/            # ML artifacts (Workstream B — not implemented yet)
-└── automation/        # Coder Work/Wake automation (Workstream C — not implemented yet)
-```
-
----
-
-## Local development
-
-Prerequisites: a recent **Python 3.x** and **Node.js 18+** (this foundation was built and
-verified on **Python 3.13** and **Node 25**).
-
-**1. Backend** (from `backend/`):
-
+### 1. Start the FastAPI Backend
 ```bash
+cd backend
 python -m venv .venv
-.venv\Scripts\Activate.ps1        # Windows PowerShell (cmd: .venv\Scripts\activate.bat · bash: source .venv/bin/activate)
+# Activate the virtual environment:
+# Windows: .venv\Scripts\activate
+# Mac/Linux: source .venv/bin/activate
+
 pip install -r requirements.txt
-copy .env.example .env            # OPTIONAL — only to enable real Qwen; never commit .env
-uvicorn app.main:app --reload     # http://localhost:8000 · docs at /docs · health at /health
+uvicorn app.main:app --reload
 ```
+*The backend will be available at `http://localhost:8000` (Swagger UI at `/docs`).*
 
-**2. Frontend** (from `frontend/`, in a second terminal):
-
+### 2. Start the React Frontend
+Open a new terminal window:
 ```bash
+cd frontend
 npm install
-npm run dev                       # http://localhost:5173 (Vite; CORS-enabled against :8000)
+npm run dev
 ```
-
-Open http://localhost:5173 — the app shell checks backend health and exercises
-`POST /api/route/plan`: the agent understands the request, shows its progress through the
-canonical states — including each **mock** tool call it made (search → fare → delay → details,
-marked ✓/✗) — and returns a **mock** recommendation with its legs, concise decision reasons and
-alternatives (or a clarification when a hard constraint is missing).
-
-**Verify:**
-
-- `pytest` from `backend/` — health, config, extraction, the agent state machine, decision engine,
-  orchestrator, the tool seam, the mock intelligence providers, and the route-plan API; the live Qwen
-  connectivity tests are **skipped** unless
-  `MODEL_STUDIO_API_KEY` is set.
-- `npm run build` from `frontend/` — type-checks (`tsc --noEmit`) then builds the production bundle.
-
-> Configuration is via environment variables only. **Never commit `.env` or any API key**
-> (see [`docs/DEVELOPMENT_RULES.md`](docs/DEVELOPMENT_RULES.md) → Environment & secrets).
+*The frontend application will be available at `http://localhost:5173`.*
 
 ---
 
-## Status
+## 👥 The Team
 
-**A1 — Project Foundation, A2 — Travel Request Understanding, A3 — Agent Orchestration &
-Decision Engine, A4 — Tool System & Capability Execution, A5 — Tool-Calling Orchestrator,
-A6 — Route Decision Engine, and A7 — Mock Intelligence Integration & End-to-End Agent Validation are
-complete.** The documentation is **consolidated into an 8-doc system**
-covering all three workstreams (PROJECT, ARCHITECTURE, DESIGN_SYSTEM, API_CONTRACTS, AGENT_SPEC,
-WORKSTREAMS, DEVELOPMENT_RULES, DEMO), and the machine-readable design tokens live in
-`frontend/src/styles/tokens.css`.
+RouteWise was built collaboratively, with each member owning a distinct vertical of the platform end-to-end:
 
-The backend (FastAPI) now runs a real agent layer: `POST /api/route/plan` extracts a validated
-`TravelRequest` (A2 — via Qwen when a key is set, else a deterministic mock), then the agent (A3)
-drives the canonical state machine `UNDERSTANDING → PLANNING → SEARCHING → EVALUATING → COMPLETED`,
-calls route tools through a safe capability seam (A4 — registry → executor → structured `ToolResult`),
-and lets **Qwen select** each tool call inside a
-bounded multi-step loop (A5). Since **A7** that loop has a complete deterministic world to work in:
-`search_routes`, `get_fare_estimate`, `get_delay_prediction` and `get_route_details` are all
-`AVAILABLE` on **mock** data served by **one shared** provider (`backend/app/tools/intelligence.py`),
-so the tools can never disagree about a route and an unknown id is a structured `ROUTE_NOT_FOUND`
-failure rather than invented numbers. Observed results are merged **per route** into the agent context
-(the candidate stays authoritative; contradictions are reported), which also fills the response's
-`legs`. A **transparent deterministic decision engine** — refined in **A6** —
-validates hard
-constraints (origin, destination, budget, arrival deadline, availability) into **structured
-violations**, normalizes and preference-weights the survivors (walking, luggage, duration, transfers,
-fare, plus any provided delay data), ranks them with a deterministic tie-break, and returns a
-recommendation with concise grounded reasons plus honest alternatives (each with `rank`, `valid`,
-`strengths`, `trade_offs` and any `constraint_violations`) — or stops
-early for clarification, or reports honestly when nothing fits. The React + TypeScript shell shows the
-parsed request, the agent-progress
-timeline (with a ✓/✗ per tool call), the mock recommendation, its **legs**, its decision reasons, and
-alternatives. Backend tests pass and
-the frontend build is verified.
+- **Sarma HK**  
+  *Workstream A: AI Agent & Decision Engine*  
+  (LLM Orchestration, Tool Calling, Constraint Extraction, Route Scoring Engine)
 
-**All route data is MOCK** (Phases A3–A7): no live transit search, ML fare/delay prediction, GTFS,
-database, seat availability, booking, disruption monitoring, or Travel Pass — those are later
-phases (A8+) and Workstreams B/C. `check_availability` and `prepare_booking` remain honest
-`NOT_IMPLEMENTED` stubs. **Qwen is not used for route selection** (the decision is
-deterministic); with no API key the backend uses the mock extractor, the mock AI client, and the mock
-tool-calling planner (`model: mock-qwen`).
+- **paulvarshan**  
+  *Workstream B: Transit Intelligence & ML*  
+  (PostgreSQL/PostGIS, GTFS Integration, XGBoost Fare Prediction, LSTM Delay Models)
+
+- **bajithan**  
+  *Workstream C: Autonomous Execution & Cloud*  
+  (Booking System, Disruption Injection, Travel Pass Delivery, Cloud Deployment)
+
+---
+<div align="center">
+  <i>Built with ❤️ for the future of tourism in Sri Lanka.</i>
+</div>

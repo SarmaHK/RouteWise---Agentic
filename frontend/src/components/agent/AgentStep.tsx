@@ -12,17 +12,18 @@
  */
 
 import type { AgentAction } from '../../types/api';
-import { Badge, type BadgeTone } from '../ui';
+import { Badge } from '../ui';
+
+const TOOL_LABELS: Record<string, string> = {
+  search_routes: 'Finding suitable routes',
+  get_fare_estimate: 'Checking available fares',
+  get_delay_prediction: 'Estimating travel delays',
+  get_route_details: 'Comparing journey options',
+  check_availability: 'Checking seat availability',
+  prepare_booking: 'Preparing booking',
+};
 
 import './AgentStep.css';
-
-/** Map a tool's resolved availability to a badge tone (never color alone — the text is shown). */
-function availabilityTone(availability: string): BadgeTone {
-  if (availability === 'available') return 'success';
-  if (availability === 'not_implemented') return 'warning';
-  if (availability === 'error') return 'error';
-  return 'muted';
-}
 
 /** Honest one-glyph outcome marker derived only from the reported status. */
 function toolGlyph(status?: string | null): string {
@@ -63,11 +64,7 @@ export function AgentStep({ action }: AgentStepProps) {
               >
                 {toolGlyph(tool.status)}
               </span>
-              <span className="rw-mono">{tool.name}</span>
-              {tool.availability && (
-                <Badge tone={availabilityTone(tool.availability)}>{tool.availability}</Badge>
-              )}
-              {tool.data_source && <Badge tone="secondary">{tool.data_source}</Badge>}
+              <span className="rw-mono">{TOOL_LABELS[tool.name] ?? tool.name}</span>
               {tool.error_code && (
                 <Badge tone="error" mono>
                   {tool.error_code}
