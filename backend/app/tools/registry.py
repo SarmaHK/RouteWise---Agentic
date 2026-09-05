@@ -119,23 +119,28 @@ class ToolRegistry:
         return self.execute(name, kwargs)
 
 
-def _default_tools(enable_workstream_b: bool = True) -> list[Tool]:
-    """The tool set: Workstream B capabilities enabled when requested, with stubs for C."""
+def _default_tools(
+    enable_workstream_b: bool = True, enable_workstream_c: bool = False
+) -> list[Tool]:
+    """The tool set: Workstream B and C capabilities enabled when requested."""
     return [
         MockRouteSearchTool(),
         FareEstimationTool(as_stub=not enable_workstream_b),
         DelayPredictionTool(as_stub=not enable_workstream_b),
         RouteDetailsTool(as_stub=not enable_workstream_b),
-        AvailabilityTool(),
+        AvailabilityTool(as_stub=not enable_workstream_c),
         BookingTool(),
     ]
 
 
 def build_tools(settings: Optional[Settings] = None) -> ToolRegistry:
-    """Build the registry. Reads enable_transit_intelligence from settings when provided."""
+    """Build the registry. Reads capability flags from settings when provided."""
     s = settings or get_settings()
     enable_b = getattr(s, "enable_transit_intelligence", False)
-    return ToolRegistry(_default_tools(enable_workstream_b=enable_b))
+    enable_c = getattr(s, "enable_autonomous_execution", False)
+    return ToolRegistry(
+        _default_tools(enable_workstream_b=enable_b, enable_workstream_c=enable_c)
+    )
 
 
 @lru_cache

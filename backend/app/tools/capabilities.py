@@ -363,14 +363,75 @@ class RouteDetailsTool(Tool):
         )
 
 
-class AvailabilityTool(_NotImplementedTool):
-    """``check_availability`` — stub; simulated availability is Workstream C."""
+class AvailabilityArgs(BaseModel):
+    """Validated input for ``check_availability``."""
+
+    model_config = ConfigDict(extra="ignore")
+    route_id: str = Field(min_length=1, description="Route identifier, e.g. 'R1'.")
+    departure_time: Optional[datetime] = Field(
+        default=None, description="Optional departure timestamp."
+    )
+    seat_class: Optional[str] = Field(
+        default=None, description="Optional seat class preference."
+    )
+
+
+class AvailabilityTool(Tool):
+    """``check_availability`` — real Workstream C implementation (simulated seat inventory)."""
 
     name = "check_availability"
     description = "Check seat/availability status for a route (simulated)."
     input_schema = {"route_id": "str"}
     output_schema = {"availability": "str"}
+    availability = ToolAvailability.available
+    data_source = DataSource.simulated
     owner = "C"
+    args_model = AvailabilityArgs
+
+    def __init__(self, as_stub: Optional[bool] = None) -> None:
+        if as_stub is None:
+            from app.config import get_settings
+
+            as_stub = not getattr(get_settings(), "enable_autonomous_execution", False)
+        self.as_stub = as_stub
+        if as_stub:
+            self.availability = ToolAvailability.not_implemented
+            self.data_source = DataSource.mock
+        else:
+            self.availability = ToolAvailability.available
+            self.data_source = DataSource.simulated
+        from automation.booking.availability import get_availability_service
+
+        self._service = get_availability_service()
+
+    def execute(self, **kwargs: Any) -> ToolResult:
+        if self.as_stub:
+            return not_implemented_result(self.name, self.owner)
+
+        route_id = kwargs.get("route_id", "")
+        travel_date = str(kwargs.get("departure_time")) if kwargs.get("departure_time") else None
+        seat_class = kwargs.get("seat_class")
+        res = self._service.check_availability(route_id, travel_date=travel_date, seat_class=seat_class)
+        avail_str = res.get("availability", "unknown")
+
+        status = ToolStatus.ok
+        if avail_str == "unavailable":
+            status = ToolStatus.unavailable
+
+        data = {
+            "availability": CandidateAvailability(avail_str).value,
+            "available_seats": res.get("available_seats", 0),
+            "status_reason": res.get("status_reason", ""),
+            "quotas": res.get("quotas", {}),
+        }
+        return ToolResult(
+            status=status,
+            data_source=DataSource.simulated,
+            data=data,
+            message=f"Availability for '{route_id}': {avail_str} ({res.get('status_reason', '')}).",
+            meta=data,
+            tool_name=self.name,
+        )
 
 
 class BookingTool(_NotImplementedTool):
