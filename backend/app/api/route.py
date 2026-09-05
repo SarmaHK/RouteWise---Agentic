@@ -25,6 +25,7 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
 from app.agent.orchestrator import RouteAgent, get_agent
@@ -325,4 +326,48 @@ def prepare_booking_hold(payload: BookingHoldRequest) -> dict[str, Any]:
         total_fare_lkr=payload.total_fare_lkr,
         seat_class=payload.seat_class,
     )
+
+
+from automation.travel_pass.schemas import TravelPass, TravelPassRequest
+from automation.travel_pass.generator import get_travel_pass_generator
+
+TravelPassRequest.model_rebuild()
+TravelPass.model_rebuild()
+
+
+@router.post(
+    "/travel-pass",
+    response_model=TravelPass,
+    summary="Generate offline-ready Travel Pass voucher (Workstream C / Coder Work)",
+)
+def generate_travel_pass(payload: TravelPassRequest) -> TravelPass:
+    """Generate a structured offline Travel Pass with embedded QR code and ticket references."""
+    generator = get_travel_pass_generator()
+    return generator.generate_pass(
+        plan=payload.plan,
+        booking_reference=payload.booking_reference,
+        traveler_name=payload.traveler_name or "Samantha Perera",
+        seats=payload.seats,
+        seat_class=payload.seat_class or "second",
+    )
+
+
+@router.post(
+    "/travel-pass/html",
+    response_class=HTMLResponse,
+    summary="Render self-contained offline Travel Pass HTML (DESIGN_SYSTEM.md §11.9)",
+)
+def render_travel_pass_html(payload: TravelPassRequest) -> HTMLResponse:
+    """Render standalone offline-ready HTML Travel Pass voucher for printing or offline presentation."""
+    generator = get_travel_pass_generator()
+    pass_data = generator.generate_pass(
+        plan=payload.plan,
+        booking_reference=payload.booking_reference,
+        traveler_name=payload.traveler_name or "Samantha Perera",
+        seats=payload.seats,
+        seat_class=payload.seat_class or "second",
+    )
+    html_content = generator.render_html(pass_data)
+    return HTMLResponse(content=html_content)
+
 
