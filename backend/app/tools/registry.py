@@ -129,7 +129,7 @@ def _default_tools(
         DelayPredictionTool(as_stub=not enable_workstream_b),
         RouteDetailsTool(as_stub=not enable_workstream_b),
         AvailabilityTool(as_stub=not enable_workstream_c),
-        BookingTool(),
+        BookingTool(as_stub=not enable_workstream_c),
     ]
 
 

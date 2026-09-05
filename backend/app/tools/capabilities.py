@@ -434,11 +434,97 @@ class AvailabilityTool(Tool):
         )
 
 
-class BookingTool(_NotImplementedTool):
-    """``prepare_booking`` — stub; only ever *prepares* (never commits) — Workstream C."""
+class BookingArgs(BaseModel):
+    """Validated input for ``prepare_booking``."""
+
+    model_config = ConfigDict(extra="ignore")
+    route_id: str = Field(min_length=1, description="Route identifier to hold.")
+    traveler_name: Optional[str] = Field(
+        default=None, description="Optional name of primary traveler."
+    )
+    seats: Optional[int] = Field(default=1, description="Number of seats to reserve.")
+    total_fare_lkr: Optional[float] = Field(
+        default=None, description="Optional route fare total in LKR."
+    )
+    seat_class: Optional[str] = Field(
+        default="second", description="Optional seating class preference."
+    )
+
+
+class BookingTool(Tool):
+    """``prepare_booking`` — real Workstream C implementation (simulated temporary hold).
+
+    SAFETY INVARIANT:
+    This tool only ever PREPARES / HOLDS a booking. It must NEVER commit payment, debit
+    funds, or call any live external payment gateway.
+    """
 
     name = "prepare_booking"
     description = "Prepare (never commit) a booking/hold for a chosen route."
-    input_schema = {"route_id": "str"}
-    output_schema = {"prepared": "bool", "reference": "str | None"}
+    input_schema = {
+        "route_id": "str",
+        "traveler_name": "str (optional)",
+        "seats": "int (optional)",
+    }
+    output_schema = {
+        "prepared": "bool",
+        "reference": "str | None",
+        "status": "str",
+        "expires_in_minutes": "int",
+        "total_fare_lkr": "float | None",
+    }
+    availability = ToolAvailability.available
+    data_source = DataSource.simulated
     owner = "C"
+    args_model = BookingArgs
+
+    def __init__(self, as_stub: Optional[bool] = None) -> None:
+        if as_stub is None:
+            from app.config import get_settings
+
+            as_stub = not getattr(get_settings(), "enable_autonomous_execution", False)
+        self.as_stub = as_stub
+        if as_stub:
+            self.availability = ToolAvailability.not_implemented
+            self.data_source = DataSource.mock
+        else:
+            self.availability = ToolAvailability.available
+            self.data_source = DataSource.simulated
+        from automation.booking.booking_service import get_booking_service
+
+        self._service = get_booking_service()
+
+    def execute(self, **kwargs: Any) -> ToolResult:
+        if self.as_stub:
+            return not_implemented_result(self.name, self.owner)
+
+        route_id = kwargs.get("route_id", "R1")
+        traveler_name = kwargs.get("traveler_name") or "Samantha Perera"
+        seats = int(kwargs.get("seats") or 1)
+        fare = kwargs.get("total_fare_lkr")
+        seat_class = kwargs.get("seat_class") or "second"
+
+        hold = self._service.prepare_hold(
+            route_id=route_id,
+            traveler_name=traveler_name,
+            seats=seats,
+            total_fare_lkr=fare,
+            seat_class=seat_class,
+        )
+
+        prepared = hold.get("prepared", False)
+        status = ToolStatus.ok if prepared else ToolStatus.unavailable
+        ref = hold.get("reference")
+
+        return ToolResult(
+            status=status,
+            data_source=DataSource.simulated,
+            data=hold,
+            message=(
+                f"Booking hold prepared for '{route_id}' (ref: {ref}, expires in 15 min)."
+                if prepared
+                else f"Booking hold failed for '{route_id}': service unavailable."
+            ),
+            meta=hold,
+            tool_name=self.name,
+        )
