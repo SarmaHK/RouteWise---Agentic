@@ -153,19 +153,18 @@ frontend/
     ├── App.*                    # shell: providers + routing + layout ONLY
     ├── pages/                   # thin screens: Landing, PlanTrip, NotFound
     ├── features/                # feature slices (heart of the app)
-    │   ├── travel-request/      # capture & submit the trip request
-    │   ├── agent-activity/      # agent steps/status/reasoning visualization
-    │   └── route-results/       # recommended route, alternatives, timeline, pass
-    │       └── (each: components/ hooks/ services/ state/ types.ts index.ts)
-    ├── components/              # SHARED, registered components (see DESIGN_SYSTEM.md §13)
-    │   ├── ui/                  # Button, Input, Select, Card, Badge, Modal, Tooltip, StatusIndicator
+    │   └── route-planner/       # 🟩 A8: the whole plan flow — request → agent rail → results
+    │       └── (RoutePlanner.tsx · RoutePlanner.css · index.ts)
+    ├── components/              # 🟩 SHARED, registered components (see DESIGN_SYSTEM.md §13)
+    │   ├── ui/                  # Button, Badge, Card, StatusIndicator, Alert (Input/Select/Modal/Tooltip still planned)
     │   ├── agent/               # AgentActivity, AgentStep, AgentStatus, ReasoningSummary
-    │   └── travel/              # TripForm, RouteCard, RouteTimeline, TransportLeg, FareDisplay, DelayBadge, TravelPass
+    │   └── travel/              # TripForm, RouteCard, RouteTimeline, TransportLeg, FareDisplay, DelayBadge, ModeIcon, TravelRequestSummary (TravelPass = Workstream C)
     ├── hooks/                   # cross-feature hooks (useMediaQuery, useAgentStream, useApi…)
     ├── services/
-    │   ├── api/                 # THE only place that calls the backend (client, routePlan, agentState)
-    │   ├── mock/                # frontend fallback fixtures (demo resilience; labeled simulated)
-    │   └── formatters/          # LKR currency, durations, times, distances
+    │   ├── api/                 # 🟩 THE only place that calls the backend (client, health, routePlan)
+    │   ├── format.ts            # 🟩 A8: formatters (LKR, durations, distances) + describeError
+    │   ├── agentState.ts        # 🟩 A8: agent-state labels, canonical order, visited-state helper
+    │   └── mock/                # ⏳ frontend fallback fixtures (demo resilience; deferred — not built in A8)
     ├── state/                   # shared client state (store + slices: agent, trip, route)
     ├── types/                   # shared domain types mirroring API_CONTRACTS.md
     ├── config/                  # env/config (API base URL, feature flags)
@@ -181,10 +180,23 @@ frontend/
 > `src/hooks`, `src/services`, `src/state`, `src/types`, and `src/styles` (real tokens).
 > **A1 also built the foundation app files** — `main.tsx`, `App.tsx`/`App.css`, `package.json`,
 > `index.html`, `vite.config.ts`, `tsconfig.json`, `config/env.ts`, `types/api.ts`, and
-> `services/api/` (the single backend client). Still **created when you build them** (A8): the
-> **feature slices** (`features/*`), **component groups** (`components/{ui,agent,travel}`), the
-> remaining **service groups** (`services/{mock,formatters}`), `state/`, `utils/`, and `assets/`
-> — do not pre-create empty leaf folders (see
+> `services/api/` (the single backend client).
+> **A8 built the product UI on that skeleton:** the shared **component groups**
+> (`components/{ui,agent,travel}`), the presentation **services** (`services/format.ts` +
+> `services/agentState.ts`), and the first **feature slice** (`features/route-planner/`). `App.tsx`
+> is now **shell-only** (header + connection `StatusIndicator` + `<RoutePlanner>`); all plan state
+> lives in the slice, and components call the backend only through `services/api`.
+>
+> **Deviation from the three-slice sketch (documented, per rule 5).** The A1 outline named three
+> slices (`travel-request`, `agent-activity`, `route-results`). All three derive from **one**
+> `POST /api/route/plan` response and share **one** state machine, so splitting them would fragment
+> that state across folders and create near-empty leaf dirs (which
+> [`DEVELOPMENT_RULES.md`](DEVELOPMENT_RULES.md) forbids pre-creating). A8 therefore ships **one
+> cohesive slice**, `features/route-planner/`, composing the shared components; it can be split
+> later if the flow grows genuinely independent sub-behaviors.
+>
+> Still **created when you build them**: `services/mock/` (demo-resilience fallback), `state/`,
+> `utils/`, `assets/`, and `pages/` — do not pre-create empty leaf folders (see
 > [`DEVELOPMENT_RULES.md`](DEVELOPMENT_RULES.md)).
 
 ### 3.2 Layer responsibilities & dependency direction
@@ -228,10 +240,12 @@ Lower layers never import from higher ones.
 ### 3.5 Tooling (decided in A1)
 
 **Chosen and installed in A1:** **Vite 5 + React 18 + TypeScript 5** (strict). TypeScript keeps
-`types/` mirroring the contracts and catches drift early. **Deferred to A8** (kept
-dependency-light per [`DEVELOPMENT_RULES.md`](DEVELOPMENT_RULES.md) rule 9): **ESLint + Prettier**
-and **Vitest + React Testing Library** — added with the first real components. Final choices are
-recorded here and in `frontend/README.md`.
+`types/` mirroring the contracts and catches drift early. **Still deferred after A8** (kept
+dependency-light per [`DEVELOPMENT_RULES.md`](DEVELOPMENT_RULES.md) rule 9 and the A8 "no new
+dependencies" constraint): **ESLint + Prettier** and **Vitest + React Testing Library**. A8 shipped
+the first real components **without** adding a runner — UI correctness is verified by `tsc --noEmit`
+(strict) + the production build + the backend suite + manual DOM checks. Add the runner/linters when
+the team accepts the dependency. Final choices are recorded here and in `frontend/README.md`.
 
 ---
 

@@ -18,8 +18,12 @@
 > (`search_routes` + `get_fare_estimate` + `get_delay_prediction` + `get_route_details` are all
 > `AVAILABLE` on **one shared deterministic mock dataset**, so the trace shows a genuine
 > search → enrich → evaluate workflow, the recommended route card gains a per-leg breakdown, and each
-> timeline tool line is marked ✓/✗ from its real status). **Step
-> 11 (disruption/re-planning) and step 12 (Travel Pass) are not built** (A8+ / Workstream C). All
+> timeline tool line is marked ✓/✗ from its real status), and **A8 makes steps 1–10 a polished,
+> judge-facing UI** (a two-column shell with a persistent **Agent activity rail**, the registered
+> `ui`/`agent`/`travel` components, honest "Working…" loading + skeleton states, per-leg `DelayBadge`
+> / `FareDisplay` / `ModeIcon`, and clear clarification / no-route / error banners — presentation
+> only; the backend, contract and states are unchanged). **Step
+> 11 (disruption/re-planning) and step 12 (Travel Pass) are not built** (A9+ / Workstream C). All
 > route data is **mock**.
 
 ---
@@ -96,6 +100,13 @@ The demo must prove the Agent can **reason**, not recite:
 > not change it** — observed tool results are merged per route id with the **candidate kept
 > authoritative** and any contradiction reported. Steps **11–12** (re-planning,
 > Travel Pass) are **not implemented** yet.
+>
+> **A8 (UI):** steps 1–10 are now presented by the real registered components in a two-column shell
+> (`TripForm` → the `AgentStatus`/`AgentActivity`/`AgentStep` rail → `RouteCard`/`RouteTimeline`/
+> `TransportLeg`/`FareDisplay`/`DelayBadge` → `ReasoningSummary` → `TravelRequestSummary`). The UI is
+> presentation only — it renders the same single-shot `POST /api/route/plan` response; there is still
+> no live streaming (the rail fills from the returned `agent_actions[]`, and loading is an honest
+> indeterminate "Working…"). Steps 11–12 remain unbuilt (A9+ / Workstream C).
 
 ---
 
@@ -249,5 +260,6 @@ do **not** hard-code the "winner".
 > **This is the target all workstreams build toward.** A3 delivers steps 1–10 over mock data, A4
 > hardens the tool execution behind step 5, A5 makes that step an autonomous multi-step Qwen loop,
 > A6 deepens the evaluation/decision behind steps 7–10, and A7 gives steps 5–6 a complete,
-> consistent multi-tool mock intelligence run (search + fare + delay + details, legs on the card);
-> the full demo (including steps 11–12) completes across A8–A9 + Workstreams B/C.
+> consistent multi-tool mock intelligence run (search + fare + delay + details, legs on the card),
+> and A8 presents steps 1–10 through the polished two-column agent-experience UI;
+> the full demo (including steps 11–12) completes across A9 + Workstreams B/C.

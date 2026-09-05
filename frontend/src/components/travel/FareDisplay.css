@@ -1,0 +1,16 @@
+/* FareDisplay — DESIGN_SYSTEM §12.10. Mono (data) + budget-fit color. Tokens only. */
+
+.fare {
+  font-family: var(--font-mono);
+  font-size: var(--text-mono);
+  color: var(--color-text-primary);
+}
+
+/* Budget fit reinforces the text "Budget: Within/Over" metric — never the only signal (§15). */
+.fare--within {
+  color: var(--color-success);
+}
+
+.fare--over {
+  color: var(--color-error);
+}

@@ -116,50 +116,57 @@ A3 Agent Architecture             ✅ implemented / orchestration + decision
 A4 Agent Tool System              ✅ implemented / tool contract + registry + executor
 A5 Tool-Calling Orchestrator      ✅ implemented / bounded multi-step Qwen tool loop
 A6 Route Decision Engine          ✅ implemented / refined deterministic decision engine
-A7 Mock Intelligence Integration  ← current / four AVAILABLE mock tools + end-to-end agent proof
-A8 Agent Experience / UI
+A7 Mock Intelligence Integration  ✅ implemented / four AVAILABLE mock tools + end-to-end agent proof
+A8 Agent Experience / UI          ← current / two-column agent-experience UI (presentation only)
 A9 Final API & Agent State
 A10 Workstream B Handover
 ```
 
-**CURRENT PHASE: A7 — Mock Intelligence Integration (a complete deterministic mock intelligence
-environment, so the agent can demonstrate a realistic end-to-end workflow before Workstream B
-supplies real transit intelligence).**
+**CURRENT PHASE: A8 — Agent Experience / UI (turn the functional A1–A7 flow into a polished,
+judge-facing UI that visually communicates the agentic workflow — an autonomous travel coordinator,
+not a chatbot).**
 
-Do **not** auto-advance into A8 or any later phase. Wait for an explicit human instruction. A7
-**fills in the existing A4 tool seam** — it does not replace the A3/A4/A5/A6 architecture, adds no
-state, no transition, no endpoint and no response field.
+Do **not** auto-advance into A9 or any later phase. Wait for an explicit human instruction. A8 is
+**presentation only** — it does not change the backend, the `POST /api/route/plan` contract, the nine
+canonical states, or any response field; it renders the **existing** single-shot response.
 
-- **One shared source of mock route truth** lives in `backend/app/tools/intelligence.py`
-  (`MockRouteIntelligence`): seven routes across three corridors, each with route-level figures
-  **and** leg-level detail whose durations/fares/walking/delays *sum* to the route totals. It is the
-  single dataset behind `search_routes`, `get_fare_estimate`, `get_delay_prediction` and
-  `get_route_details`, so those four tools can never contradict each other about the same route.
-  `app/tools/candidates.py` is now a thin facade over it (the A3 fixtures were **moved**, not copied).
-- **Four tools are `AVAILABLE`** with `data_source=mock`: `search_routes` plus the three A7
-  intelligence tools. `check_availability` and `prepare_booking` stay honest `NOT_IMPLEMENTED`
-  Workstream-C stubs. The three new tools are ordinary `Tool` subclasses executed by the **existing**
-  `ToolExecutor` — no second executor, registry, result class or tool base class.
-- **Unknown routes fail honestly**: `ToolErrorCode.ROUTE_NOT_FOUND` with `success=false`,
-  `data=None`, `data_source=mock` and `details.known_route_ids`. Nothing is ever randomized or
-  invented for a route the dataset does not hold.
-- **The agent stays model-driven.** The real orchestrator hard-codes no tool sequence: it executes
-  whatever the planner returns and feeds every result — success or failure — back. Only the offline
-  `MockAgentPlanner` simulates the search → fare → delay → details → decide scenario, and it derives
-  each step from *observed evidence* (`PlannerContext.route_ids` / `called_tools`), so a registry
-  without a capability simply skips that step.
-- **Tool results are merged conservatively** (brief §17): each payload is filed under the `route_id`
-  it reports, the structured candidate stays **authoritative**, a genuinely missing figure is filled
-  in, and a contradiction is recorded as an explicit conflict instead of being resolved. The
-  recommended route's legs are attached to `PlanResponse.legs` (declared since A3, empty until now).
-- **A6 still decides.** The golden Colombo Fort → Ella demo resolves to **R1 (score 0.472)** with
-  alternatives **R2 (0.408)** and **R3 (excluded — over the LKR 2,000 budget)** — bit-for-bit the A6
-  result, because the mock intelligence agrees with the candidates it enriches.
+- **Two-column app shell.** `App.tsx` is now **shell-only** (header brand · "Phase A8" badge · a live
+  backend `StatusIndicator` · footer); all plan state lives in one feature slice,
+  `frontend/src/features/route-planner/`. At ≥`lg` (1024px) a persistent **Agent activity rail** sits
+  beside the main column and stacks below it on smaller screens (DESIGN_SYSTEM §12.1). No chat UI, no
+  bubbles.
+- **Registered components are built** (DESIGN_SYSTEM §13): `components/ui/` (Button · Badge · Card ·
+  StatusIndicator · **Alert**), `components/agent/` (AgentActivity · AgentStep · AgentStatus ·
+  ReasoningSummary), `components/travel/` (TripForm · RouteCard · RouteTimeline · TransportLeg ·
+  FareDisplay · DelayBadge · **ModeIcon** · **TravelRequestSummary**). `TravelPass` stays a
+  Workstream-C contract. Three new registry rows (Alert, ModeIcon, TravelRequestSummary) were added
+  before building (§13.5). **Tokens only** — no new colors/type/spacing/visual language.
+- **Honest agent activity** (§12.9): the rail renders the real `agent_actions[]` trace as a colored
+  timeline (state → `--state-*` via CSS `data-state`, never chosen in TS), each tool call expandable
+  as **mono** and marked ✓/✗ from its real `status`; a progress **stepper** fills only from states the
+  run actually visited. Because the API is **single-shot** until A9, loading is an honest
+  indeterminate "Working…" + skeletons — no faked stage, no generic spinner.
+- **Route presentation** (§12.10): the recommended `RouteCard` (primary accent + "Recommended" + a
+  mock-data tag) shows a metrics grid (duration, fare, transfers, walking, budget fit, delay risk, fit
+  score) and its `RouteTimeline` of `TransportLeg`s (per-mode `ModeIcon`, per-leg `DelayBadge`);
+  alternatives show strengths + trade-offs and an excluded route keeps its structured violation.
+- **Mock honesty** (AGENT_SPEC §15–16): fares read "Estimated", delays "Simulated … — mock data",
+  every card carries its `data_source`; nothing is labeled live/confirmed/real-time.
+- **Discipline:** components call the backend only through `services/api` (no `fetch` in components);
+  formatters + the agent-state map live in `services/format.ts` / `services/agentState.ts`; no
+  decision logic or route scoring in React. Dependency-light kept — **no** new npm packages, **no**
+  state library, **no** test runner (UI verified by `tsc --noEmit` strict + the production build + the
+  backend suite + manual DOM checks).
+
+The data behind the UI is still the **A7 mock intelligence** (one shared dataset in
+`backend/app/tools/intelligence.py`; four `AVAILABLE` mock tools). The golden Colombo Fort → Ella demo
+still resolves to **R1 (score 0.472)** over **R2 (0.408)**, with **R3 excluded** on the LKR 2,000
+budget — A8 changes how that result *looks*, not what it *is*.
 
 All route data is still **mock**: no XGBoost, no LSTM, no PostgreSQL/PostGIS, no GTFS or GTFS-RT, no
 external transit API, no browser automation, no booking, no Travel Pass. Workstream B later replaces
 the provider *behind* these exact tool signatures (`app/tools/intelligence.py` is the documented
-replacement point). Do not start real Workstream B/C work or A8+ logic — those are later phases.
+replacement point). Do not start real Workstream B/C work or A9+ logic — those are later phases.
 
 ---
 
@@ -181,8 +188,11 @@ RouteWise - Agentic/
 │   └── DEMO.md
 ├── frontend/              ← React + Vite + TS app (Workstream A UI + design tokens)
 │   ├── README.md
-│   ├── src/main.tsx · App.tsx                 ← app shell (request input → agent progress timeline → mock decision); A5 renders the multi-step tool trace; A6 renders the structured route comparison (strengths · trade-offs · constraint violations); A7 adds a ✓/✗ tool glyph + the recommended route's mock legs
+│   ├── src/main.tsx · App.tsx                 ← A8: App.tsx is a shell only (header + connection StatusIndicator + <RoutePlanner>); the plan flow lives in features/route-planner/
+│   ├── src/features/route-planner/            ← A8: the one feature slice (request → agent activity rail → results); calls the backend only via services/api
+│   ├── src/components/{ui,agent,travel}/      ← A8: registered shared components (ui: Button·Badge·Card·StatusIndicator·Alert · agent: AgentActivity·AgentStep·AgentStatus·ReasoningSummary · travel: TripForm·RouteCard·RouteTimeline·TransportLeg·FareDisplay·DelayBadge·ModeIcon·TravelRequestSummary)
 │   ├── src/services/api/                      ← the ONLY backend caller (client · health · routePlan)
+│   ├── src/services/format.ts · agentState.ts ← A8: presentation formatters + the agent-state label/order map (no business logic)
 │   ├── src/config/env.ts · src/types/api.ts   ← runtime config + contract-mirroring types (A5: ToolCall.error_code · A6: Recommendation rank/valid/strengths/constraint_violations · A7: Leg populated)
 │   └── src/styles/tokens.css · globals.css    ← CSS source of truth for the design system
 ├── backend/               ← FastAPI (Workstream A agent + API) — A1 foundation + A2 understanding + A3 agent + A4 tools + A5 tool loop + A6 decision refinement + A7 mock intelligence

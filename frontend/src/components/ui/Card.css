@@ -1,0 +1,34 @@
+/* Card — DESIGN_SYSTEM §11.3. The `.panel` surface. Tokens only. */
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  background-color: var(--card-bg);
+  border: var(--card-border);
+  border-radius: var(--card-radius);
+  padding: var(--card-padding);
+  box-shadow: var(--card-shadow);
+}
+
+.panel__title {
+  font-size: var(--text-h3);
+  color: var(--color-text-primary);
+}
+
+.panel__lead {
+  font-size: var(--text-body);
+  color: var(--color-text-secondary);
+}
+
+.panel__body {
+  font-size: var(--text-body-sm);
+  color: var(--color-text-secondary);
+}
+
+.panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-1);
+}

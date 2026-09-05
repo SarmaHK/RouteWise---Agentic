@@ -20,7 +20,7 @@
 | **Track** | Hospitality & Tourism |
 | **Team size** | 3 members (3 workstreams) |
 | **Reasoning engine** | Qwen (Alibaba Cloud Model Studio) |
-| **Implementation sequencing** | Workstream A built first (phases A1–A7 done); B & C documented, built to the same interfaces |
+| **Implementation sequencing** | Workstream A built first (phases A1–A8 done); B & C documented, built to the same interfaces |
 
 ---
 
@@ -348,14 +348,47 @@ Full definitions + scoring model: [`AGENT_SPEC.md` §8–10](AGENT_SPEC.md).
   - **Scope:** strictly Workstream A. No XGBoost/LSTM, no PostgreSQL/PostGIS, no GTFS/GTFS-RT, no live
     transit APIs, no browser/railway automation, no booking, no Coder Work/Wake, no Travel Pass, no
     monitoring, no cloud deploy. All route data is still **mock**.
-- **No route-planning features beyond A7's end-to-end mock agent run (by design).** No
+- **Phase A8 — Agent Experience / UI: COMPLETE.** The functional A1–A7 flow is now a polished,
+  judge-facing **agentic** UI — the backend, its API contract and the nine canonical states are
+  **unchanged** (A8 is presentation only):
+  - **Two-column app shell** (`App.tsx` shell-only + one `features/route-planner/` slice): a header
+    (brand · "Phase A8" badge · live backend `StatusIndicator`), a main column (hero request form →
+    results), and a persistent **Agent activity rail** at ≥`lg` (1024px) that stacks below on smaller
+    screens (DESIGN_SYSTEM §12.1). No chat UI, no bubbles (§12.11).
+  - **Registered components, built** (DESIGN_SYSTEM §13): `ui/` Button · Badge · Card ·
+    StatusIndicator · **Alert** (new); `agent/` AgentActivity · AgentStep · AgentStatus ·
+    ReasoningSummary; `travel/` TripForm · RouteCard · RouteTimeline · TransportLeg · FareDisplay ·
+    DelayBadge · **ModeIcon** (the §13.4 icon set) · **TravelRequestSummary** (new). Tokens only — no
+    new colors/type/spacing; the three new registry rows were added before building (§13.5).
+  - **Honest agent activity** (§12.9): the rail renders the real `agent_actions[]` trace as a colored
+    timeline (state → `--state-*` via CSS `data-state`, never chosen in TS) with expandable **mono**
+    tool calls marked ✓/✗ from each call's real status, plus a progress **stepper** derived only from
+    states the run actually visited. Loading is an honest indeterminate "Working…" (the API is
+    single-shot until A9) — no faked stage, no generic spinner.
+  - **Route presentation** (§12.10): the recommended `RouteCard` (primary accent + "Recommended" + a
+    mock-data tag) shows a metrics grid (duration, fare, transfers, walking, budget fit, delay risk,
+    fit score) and its `RouteTimeline` of `TransportLeg`s (per-mode icon, per-leg `DelayBadge`);
+    alternatives show strengths + trade-offs, and an excluded route keeps its structured violation
+    (e.g. `BUDGET` — LKR 2,350 > LKR 2,000) instead of disappearing.
+  - **Mock honesty:** fares read "Estimated", delays "Simulated … — mock data", every card carries
+    its `data_source`; nothing is labeled live/confirmed/real-time.
+  - **Architecture discipline:** all plan state lives in the one `route-planner` slice; components
+    call the backend only through `services/api`; formatters/agent-state maps live in
+    `services/format.ts` + `services/agentState.ts`; no decision logic or route scoring in React.
+    Dependency-light kept — **no** new npm packages, **no** state library, **no** test runner added
+    (UI verified by `tsc --noEmit` strict + the production build + the 239-test backend suite +
+    manual DOM checks).
+  - **Scope:** presentation only. No streaming/SSE/WebSocket or new status endpoint (A9), no
+    execution/booking, no disruption replanning, no ML/database/GTFS, no Travel Pass, no cloud —
+    all route data is still **mock**.
+- **No route-planning features beyond A8's presentation layer (by design).** No
   execution/booking, disruption replanning, ML, database, GTFS, automation, or Travel Pass are
-  built yet — those belong to A8+ / Workstream B / Workstream C. All A7 route data is **mock**.
+  built yet — those belong to A9+ / Workstream B / Workstream C. All route data is **mock**.
 - **Honesty:** real Qwen connectivity is **not** claimed unless a key is configured; with no key the
   backend uses the mock extractor/client **and the mock tool-calling planner** (see
   [`AGENT_SPEC.md` §15](AGENT_SPEC.md)).
-- **Next (when instructed):** Workstream A phase **A8 — Agent Experience / UI** (agent-activity UI and
-  route presentation); B and C proceed against
+- **Next (when instructed):** Workstream A phase **A9 — Final API & Agent State** (a stable
+  `POST /api/route/plan` + a real agent-status endpoint / streaming); B and C proceed against
   the agreed interfaces.
 
 ---
@@ -371,7 +404,7 @@ Full definitions + scoring model: [`AGENT_SPEC.md` §8–10](AGENT_SPEC.md).
 | **A5** | **Tool-Calling Orchestrator** ✅ | Bounded multi-step Qwen tool-calling loop (decide → call → observe): adapter (real + deterministic mock), iteration limit + duplicate/loop detection, decision grounded in the A3 engine. |
 | **A6** | **Route Decision Engine** ✅ | Constraint-aware candidate evaluation: structured hard-constraint violations, defensive/malformed-candidate handling, robust normalization, preference-weighted + delay-aware scoring, deterministic ranking, grounded reasons/strengths/trade-offs. |
 | **A7** | **Mock Intelligence Integration** ✅ | Complete deterministic mock environment behind the B boundary: one shared mock route-truth module, `get_fare_estimate` / `get_delay_prediction` / `get_route_details` as `AVAILABLE` mock tools, `ROUTE_NOT_FOUND`, a multi-step `MockAgentPlanner` (`mock-qwen`), conservative per-route result merging + populated `legs`, and an end-to-end agent validation (golden trace). |
-| A8 | Agent Experience / UI | Agent-activity UI, route presentation. |
+| **A8** | **Agent Experience / UI** ✅ | Two-column shell + agent-activity rail (real `agent_actions[]` timeline + progress stepper), route presentation (recommended/alternative `RouteCard`s, legs, delay/fare/budget), the registered `ui`/`agent`/`travel` components, and honest loading/empty/error/clarification states — presentation only, tokens only, no new dependencies. |
 | A9 | Final API & Agent State | Stable `POST /api/route/plan`, agent status API. |
 | A10 | Workstream B Handover | Contracts + mocks ready for B to replace. |
 

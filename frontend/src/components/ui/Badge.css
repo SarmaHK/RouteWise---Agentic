@@ -1,0 +1,66 @@
+/* Badge — DESIGN_SYSTEM §11.4. Subtle bg + base-color text + label (never color alone). */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--badge-padding-y) var(--badge-padding-x);
+  border-radius: var(--badge-radius-pill);
+  border: var(--border-width) solid transparent;
+  font-size: var(--badge-font);
+  font-weight: var(--font-semibold);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  line-height: var(--leading-none);
+  white-space: nowrap;
+}
+
+/* Machine values (error codes, tool names) read as data → mono, sentence case (§14). */
+.badge--mono {
+  font-family: var(--font-mono);
+  text-transform: none;
+  letter-spacing: var(--tracking-normal);
+}
+
+/* ---------- Tones (semantic + brand subtles) ---------- */
+.badge--neutral {
+  background-color: var(--color-surface-elevated);
+  color: var(--color-text-secondary);
+  border-color: var(--color-border);
+}
+
+.badge--primary {
+  background-color: var(--color-primary-subtle);
+  color: var(--color-primary);
+}
+
+.badge--secondary {
+  background-color: var(--color-secondary-subtle);
+  color: var(--color-secondary);
+}
+
+.badge--success {
+  background-color: var(--color-success-subtle);
+  color: var(--color-success);
+}
+
+.badge--warning {
+  background-color: var(--color-warning-subtle);
+  color: var(--color-warning);
+}
+
+.badge--error {
+  background-color: var(--color-error-subtle);
+  color: var(--color-error);
+}
+
+.badge--info {
+  background-color: var(--color-info-subtle);
+  color: var(--color-info);
+}
+
+.badge--muted {
+  background-color: var(--color-surface-sunken);
+  color: var(--color-text-muted);
+  border-color: var(--color-border);
+}

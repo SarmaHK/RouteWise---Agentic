@@ -1,0 +1,135 @@
+/* AgentStep — DESIGN_SYSTEM §11.7 (activity timeline). Tokens only. */
+
+.agent-timeline__item {
+  position: relative;
+  display: grid;
+  grid-template-columns: var(--status-node-size) 1fr;
+  gap: var(--space-3);
+  padding-bottom: var(--space-4);
+}
+
+/* Connector between nodes (§11.7 --timeline-line-*). */
+.agent-timeline__item:not(:last-child)::before {
+  content: '';
+  position: absolute;
+  left: calc(var(--status-node-size) / 2);
+  top: var(--status-node-size);
+  bottom: 0;
+  width: var(--timeline-line-width);
+  transform: translateX(calc(var(--timeline-line-width) / -2));
+  background-color: var(--timeline-line-color);
+}
+
+.agent-timeline__node {
+  width: var(--status-node-size);
+  height: var(--status-node-size);
+  margin-top: var(--space-1);
+  border-radius: var(--radius-full);
+  background-color: var(--state-idle);
+}
+
+.agent-timeline__content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.agent-timeline__head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* The canonical state code is meta → small mono; the human label carries the emphasis. */
+.agent-timeline__state {
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  font-weight: var(--font-semibold);
+  letter-spacing: var(--tracking-wide);
+  color: var(--color-text-muted);
+}
+
+.agent-timeline__label {
+  font-size: var(--text-body-sm);
+  font-weight: var(--font-medium);
+  color: var(--color-text-primary);
+}
+
+.agent-timeline__detail {
+  font-size: var(--text-body-sm);
+  color: var(--timeline-trace-text);
+  line-height: var(--leading-snug);
+}
+
+/* Tool-call trace: mono tool name + status/availability/source badges + a plain-language
+   result summary, on a sunken surface (§11.7). */
+.agent-timeline__tool {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background-color: var(--timeline-trace-bg);
+  border: var(--border-width) solid var(--color-border);
+}
+
+.agent-timeline__tool-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  font-size: var(--text-body-sm);
+  color: var(--color-text-primary);
+}
+
+.agent-timeline__glyph {
+  font-family: var(--font-mono);
+  font-weight: var(--font-bold);
+  color: var(--color-text-muted);
+}
+.agent-timeline__glyph[data-status='done'] {
+  color: var(--color-success);
+}
+.agent-timeline__glyph[data-status='error'] {
+  color: var(--color-error);
+}
+
+.agent-timeline__tool-summary {
+  font-size: var(--text-body-sm);
+  color: var(--timeline-trace-text);
+  line-height: var(--leading-snug);
+}
+
+/* Canonical state → node color (§11.5; AGENT_SPEC §5 — never invent new states). */
+.agent-timeline__item[data-state='understanding'] .agent-timeline__node {
+  background-color: var(--state-understanding);
+}
+.agent-timeline__item[data-state='planning'] .agent-timeline__node {
+  background-color: var(--state-planning);
+}
+.agent-timeline__item[data-state='searching'] .agent-timeline__node {
+  background-color: var(--state-searching);
+}
+.agent-timeline__item[data-state='evaluating'] .agent-timeline__node {
+  background-color: var(--state-evaluating);
+}
+.agent-timeline__item[data-state='executing'] .agent-timeline__node {
+  background-color: var(--state-executing);
+}
+.agent-timeline__item[data-state='replanning'] .agent-timeline__node {
+  background-color: var(--state-replanning);
+}
+.agent-timeline__item[data-state='completed'] .agent-timeline__node {
+  background-color: var(--state-completed);
+}
+.agent-timeline__item[data-state='error'] .agent-timeline__node {
+  background-color: var(--state-error);
+}
+
+/* The live/active step is emphasized with the single allowed glow — not by color alone (§14). */
+.agent-timeline__item[data-status='active'] .agent-timeline__node {
+  box-shadow: var(--shadow-glow-primary);
+  animation: rw-pulse var(--duration-slower) var(--ease-standard) infinite;
+}

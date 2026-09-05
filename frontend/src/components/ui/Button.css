@@ -1,0 +1,102 @@
+/* Button — DESIGN_SYSTEM §11.1. Tokens only; no magic values (golden rule 1). */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  height: var(--btn-height-md);
+  padding-inline: var(--btn-padding-x-md);
+  border-radius: var(--btn-radius);
+  border: var(--border-width) solid transparent;
+  font-size: var(--btn-font-md);
+  font-weight: var(--btn-font-weight);
+  line-height: var(--leading-none);
+  transition: var(--btn-transition);
+}
+
+.btn:disabled {
+  opacity: var(--btn-disabled-opacity);
+  cursor: not-allowed;
+}
+
+.btn:focus-visible {
+  box-shadow: var(--btn-focus-ring);
+}
+
+/* ---------- Sizes (md is the base) ---------- */
+.btn--sm {
+  height: var(--btn-height-sm);
+  padding-inline: var(--btn-padding-x-sm);
+  font-size: var(--btn-font-sm);
+}
+
+.btn--lg {
+  height: var(--btn-height-lg);
+  padding-inline: var(--btn-padding-x-lg);
+  font-size: var(--btn-font-lg);
+}
+
+.btn--full {
+  width: 100%;
+}
+
+/* ---------- Variants (§11.1) ---------- */
+.btn--primary {
+  background-color: var(--color-primary);
+  color: var(--color-on-primary);
+}
+
+.btn--primary:hover:not(:disabled) {
+  background-color: var(--color-primary-hover);
+}
+
+.btn--primary:active:not(:disabled) {
+  background-color: var(--color-primary-active);
+}
+
+.btn--secondary {
+  background-color: transparent;
+  color: var(--color-text-primary);
+  border-color: var(--color-border-strong);
+}
+
+.btn--secondary:hover:not(:disabled) {
+  background-color: var(--color-surface-elevated);
+}
+
+.btn--ghost {
+  background-color: transparent;
+  color: var(--color-text-secondary);
+}
+
+.btn--ghost:hover:not(:disabled) {
+  background-color: var(--color-surface-elevated);
+  color: var(--color-text-primary);
+}
+
+.btn--danger {
+  background-color: var(--color-error-strong);
+  color: var(--color-on-error);
+}
+
+.btn--danger:hover:not(:disabled) {
+  background-color: var(--color-error);
+}
+
+/* ---------- Loading: subtle spinner, keeps width (§12.6; not a bouncing spinner) ---------- */
+.btn__spinner {
+  width: var(--space-3);
+  height: var(--space-3);
+  flex-shrink: 0;
+  border-radius: var(--radius-full);
+  border: var(--border-width-thick) solid currentColor;
+  border-top-color: transparent;
+  animation: rw-spin var(--duration-slower) linear infinite;
+}
+
+@keyframes rw-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

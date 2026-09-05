@@ -574,62 +574,77 @@ lives in `frontend/src/features/` (see [`ARCHITECTURE.md` §3](ARCHITECTURE.md))
 
 ```
 components/
-├── ui/      Button · Input · Select · Card · Badge · Modal · Tooltip · StatusIndicator
-├── agent/   AgentActivity · AgentStep · AgentStatus · ReasoningSummary
-└── travel/  TripForm · RouteCard · RouteTimeline · TransportLeg · FareDisplay · DelayBadge · TravelPass
+├── ui/      Button 🟩 · Badge 🟩 · Card 🟩 · StatusIndicator 🟩 · Alert 🟩 · Input · Select · Modal · Tooltip
+├── agent/   AgentActivity 🟩 · AgentStep 🟩 · AgentStatus 🟩 · ReasoningSummary 🟩
+└── travel/  TripForm 🟩 · RouteCard 🟩 · RouteTimeline 🟩 · TransportLeg 🟩 · FareDisplay 🟩 ·
+             DelayBadge 🟩 · ModeIcon 🟩 · TravelRequestSummary 🟩 · TravelPass 🟥 (Workstream C)
 ```
 
-Each component folder (when built): `ComponentName.tsx`, `ComponentName.css` (tokens only),
-`ComponentName.test.tsx`, `index.ts`. **PascalCase** folders/components; one primary component per
-folder; presentational components hold **no** business logic.
+**A8 realization.** Components ship as **flat files inside their domain group** (`ui/`, `agent/`,
+`travel/`) — not one subfolder each: `ComponentName.tsx` + `ComponentName.css` (tokens only), with a
+single `index.ts` **barrel** per group. **PascalCase** components; presentational components hold
+**no** business logic. Per-component `ComponentName.test.tsx` is **deferred**: A8 added **no** test
+runner (kept dependency-light per [`DEVELOPMENT_RULES.md`](DEVELOPMENT_RULES.md) rule 9 and the A8
+"no new dependencies" constraint), so the UI behaviors are verified by `tsc --noEmit` (strict) + the
+production build + the backend suite + manual DOM checks; a runner (Vitest + RTL) lands only when
+the team chooses to add that dependency.
 
 ### 13.3 Registry
 
-Status: 🟥 **Planned** (not built — foundation phase) · 🟩 **Built** · 🟨 **Partial**. All are 🟥
-during **A1**.
+Status: 🟥 **Planned** (not built) · 🟩 **Built** · 🟨 **Partial**. All were 🟥 during **A1**; **A8
+built the agent-experience set** (🟩 below) and left the not-yet-needed primitives (Input, Select,
+Modal, Tooltip) plus the Workstream-C `TravelPass` 🟥. `Alert`, `ModeIcon` and
+`TravelRequestSummary` were **added to this registry in A8** (§13.5) before being built.
 
 **`ui/` — primitives**
 
 | Component | Purpose | Key props (conceptual) | Notes |
 |-----------|---------|------------------------|-------|
-| **Button** | All actions | `variant`, `size`, `loading`, `disabled`, `icon` | One primary per view (§11.1). |
-| **Input** | Text/number fields | `label`, `value`, `onChange`, `error`, `hint`, `type`, `required` | Label above; never placeholder-only. |
-| **Select** | Enumerated choices | `label`, `options`, `value`, `onChange`, `error` | Native `<select>` styled or a11y listbox. |
-| **Card** | Primary container | `title`, `interactive`, `selected`, `padding` | §11.3. |
-| **Badge** | Status/label pills | `tone`, `size` | Subtle bg + colored text + label. |
-| **Modal** | Dialogs/confirmations | `open`, `onClose`, `title`, `footer` | `--z-modal`, focus trap, ESC. |
-| **Tooltip** | Contextual hints | `content`, `placement` | `--z-tooltip`; keyboard friendly. |
-| **StatusIndicator** | Colored dot + label | `state`, `label`, `pulse` | Shared primitive behind agent/delay/budget status; never color-only. |
+| 🟩 **Button** | All actions | `variant`, `size`, `loading`, `disabled`, `fullWidth` | One primary per view (§11.1). |
+| 🟥 **Input** | Text/number fields | `label`, `value`, `onChange`, `error`, `hint`, `type`, `required` | Label above; never placeholder-only. A8 `TripForm` uses a styled multiline `<textarea>` directly (the §12.5 hero NL field), so a single-line `Input` was not needed yet. |
+| 🟥 **Select** | Enumerated choices | `label`, `options`, `value`, `onChange`, `error` | Native `<select>` styled or a11y listbox. |
+| 🟩 **Card** | Primary container | `as`, `title`, `titleId`, `lead`, `actions` | §11.3; renders `.panel`, wired with `aria-labelledby` via `useId`. |
+| 🟩 **Badge** | Status/label pills | `tone`, `mono` | Subtle bg + colored text + label; spreads native props (e.g. `title`). |
+| 🟩 **Alert** | Inline state banner | `tone`, `title`, `hint`, `icon`, `role` | **New in A8** (§13.5): the §12.8 error / clarification / offline banner — icon + label, never color-only. |
+| 🟥 **Modal** | Dialogs/confirmations | `open`, `onClose`, `title`, `footer` | `--z-modal`, focus trap, ESC. |
+| 🟥 **Tooltip** | Contextual hints | `content`, `placement` | `--z-tooltip`; keyboard friendly. |
+| 🟩 **StatusIndicator** | Colored dot + label | `state`, `label`, `pulse` | Shared primitive behind agent/connection status; `data-state` + `data-pulse`; never color-only. |
 
 **`agent/` — agent visualization**
 
 | Component | Purpose | Key props (conceptual) | Notes |
 |-----------|---------|------------------------|-------|
-| **AgentActivity** | Activity rail/timeline container | `steps[]`, `currentState` | Renders `AgentStep`s; auto-scroll. |
-| **AgentStep** | One timeline step | `state`, `title`, `detail`, `toolCall?`, `status` | Uses `StatusIndicator`; mono trace. |
-| **AgentStatus** | Compact current-state chip | `state`, `label` | Maps state → color/label. |
-| **ReasoningSummary** | Human decision explanation | `summary`, `constraintsReferenced[]` | Shown at COMPLETED. |
+| 🟩 **AgentActivity** | Activity rail/timeline container | `actions[]`, `busy` | §12.9 timeline of `AgentStep`s + a progress **stepper** derived from real visited states; skeleton while `busy`. |
+| 🟩 **AgentStep** | One timeline step | `action` | One `agent_actions[]` entry: state color + label, human phrase, expandable **mono** tool trace with ✓/✗ from real `status`. |
+| 🟩 **AgentStatus** | Compact current-state chip | `state`, `busy` | Maps state → color/label; honest indeterminate **"Working…"** while `busy` (single-shot API — no faked stage, §12.8). |
+| 🟩 **ReasoningSummary** | Human decision explanation | `summary` | Shown at COMPLETED; "In short: …". |
 
 **`travel/` — domain components**
 
 | Component | Purpose | Key props (conceptual) | Notes |
 |-----------|---------|------------------------|-------|
-| **TripForm** | Capture the request | `onSubmit`, `initialValues`, `submitting`, `error` | Composes Input/Select/Button. |
-| **RouteCard** | Present one route | `route`, `recommended`, `onSelect`, `selected` | Left accent bar; totals + timeline. |
-| **RouteTimeline** | Ordered legs | `legs[]` | Renders `TransportLeg`s. |
-| **TransportLeg** | One leg | `mode`, `from`, `to`, `duration`, `fare`, `delay?` | Per-mode icon; mono duration/fare. |
-| **FareDisplay** | Fare/budget figure | `amount`, `currency`, `budgetStatus?` | **Mono**; color by budget fit. |
-| **DelayBadge** | Delay risk | `level`, `minutes?` | Warning/error tones; icon + text. |
-| **TravelPass** | Offline pass (**visual contract only**) | `pass`, `legs[]`, `refs` | Workstream **C** implements generation. |
+| 🟩 **TripForm** | Capture the request (§12.5 hero NL field) | `onSubmit`, `initialValue`, `submitting`, `disabled`, `error` | Multiline hero `<textarea>` + example hint + Primary submit; inline empty/error validation. |
+| 🟩 **RouteCard** | Present one route | `route`, `recommended`, `legs` | Left accent bar (recommended); metrics grid + `RouteTimeline` + reasons / strengths / trade-offs / structured violations. One component for recommended **and** alternative. |
+| 🟩 **RouteTimeline** | Ordered legs | `legs[]` | Renders `TransportLeg`s as an `<ol>`. |
+| 🟩 **TransportLeg** | One leg | `leg` | Per-mode `ModeIcon`; mono duration/fare/walk; per-leg `DelayBadge`. |
+| 🟩 **FareDisplay** | Fare/budget figure | `amount`, `currency`, `budgetStatus` | **Mono**; color by budget fit (within → success, over → error). |
+| 🟩 **DelayBadge** | Delay risk | `level`, `minutes` | Thin `Badge` wrapper: warning/error/success tones + text; hidden when `none`. |
+| 🟩 **ModeIcon** | Transport-mode glyph (§13.4 icon set) | `mode` | **New in A8**: the §13.4 walk/tuk/bus/train/taxi/ferry set as inline stroke SVGs + a direction-arrow fallback; `aria-hidden`. |
+| 🟩 **TravelRequestSummary** | Parsed-request recap | `request` | **New in A8** (§13.5): read-only `<dl>` of the understood `TravelRequest` (origin/destination/budget/luggage/walking/times) + any `assumptions`. |
+| 🟥 **TravelPass** | Offline pass (**visual contract only**) | `pass`, `legs[]`, `refs` | Workstream **C** implements generation — **not** built in A8. |
 
 ### 13.4 Shared building blocks (behind the components)
 
 - **Transport-mode icons** — one set for `walk, tuk, bus, train, taxi, ferry`; reused by
-  `TransportLeg`, maps, timeline.
+  `TransportLeg`, maps, timeline. **A8:** realized as `components/travel/ModeIcon` (inline stroke
+  SVGs + a fallback glyph).
 - **Agent-state → color/label map** — single source (§11.5 + [`AGENT_SPEC.md`](AGENT_SPEC.md));
-  consumed by `StatusIndicator`, `AgentStep`, `AgentStatus`.
+  consumed by `StatusIndicator`, `AgentStep`, `AgentStatus`. **A8:** labels + canonical order live in
+  `services/agentState.ts` (`STATE_LABELS`, `PROGRESS_STAGES`, `visitedStates`); colors are applied in
+  CSS via `data-state` + the `--state-*` tokens (never chosen in TS).
 - **Formatters** — LKR currency, durations (`3h 20m`), times, distances (km). Live in frontend
-  **services/utils**, not inside components.
+  **services/utils**, not inside components. **A8:** implemented in `services/format.ts`
+  (`formatMoney`, `formatLkr`, `formatMinutes`, `formatKm`, `describeError`).
 
 ### 13.5 Adding to this registry
 
